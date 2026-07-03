@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>成就系统 - campus3ai</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="sidebar-logo"><span class="icon">🎓</span> campus3ai</div>
+            <ul class="sidebar-nav">
+                <li><a href="dashboard.html"><span class="nav-icon">📊</span> 首页</a></li>
+                <li><a href="pomodoro.html"><span class="nav-icon">🍅</span> 番茄钟</a></li>
+                <li><a href="records.html"><span class="nav-icon">📋</span> 时间记录</a></li>
+                <li><a href="stats.html"><span class="nav-icon">📈</span> 统计</a></li>
+                <li><a href="ai-report.html"><span class="nav-icon">🤖</span> AI 分析</a></li>
+                <li><a href="achievements.html" class="active"><span class="nav-icon">🏆</span> 成就</a></li>
+            </ul>
+            <div class="sidebar-footer">
+                <div class="sidebar-user" id="current-user">未登录</div>
+                <a href="#" id="btn-logout">退出登录</a>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div class="page-header">
+                <h1>🏆 成就系统</h1>
+                <p>完成挑战，收集成就徽章</p>
+            </div>
+
+            <!-- 进度概览 -->
+            <div class="card" style="text-align:center">
+                <div style="font-size:3rem;margin-bottom:8px" id="progress-icon">🏆</div>
+                <div style="font-size:1.4rem;font-weight:700" id="progress-text">加载中...</div>
+                <div class="progress-bar" style="max-width:400px;margin:12px auto;height:12px">
+                    <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+                </div>
+                <div class="text-sm text-muted" id="progress-detail"></div>
+                <button class="btn btn-primary mt-4" onclick="checkAchievements()">
+                    🔄 刷新成就状态
+                </button>
+            </div>
+
+            <!-- 最近获得 -->
+            <div class="card hidden" id="recent-card">
+                <div class="card-header"><span class="card-title">🎉 最近获得</span></div>
+                <div class="flex gap-4" style="flex-wrap:wrap" id="recent-achievements"></div>
+            </div>
+
+            <!-- 按类别展示所有成就 -->
+            <div id="all-achievements">
+                <div class="empty-state"><div class="empty-icon">⏳</div><div class="empty-text">加载中...</div></div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/auth.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            await Promise.all([
+                loadAchievements(),
+                loadStats(),
+            ]);
+        });
+
+        async function loadAchievements() {
+            const result = await AchievementAPI.list();
+            if (!result || result.code !== 200) return;
+
+            const data = result.data;
+            const grouped = data.grouped || {};
+
+            // 进度条
+            const pct = data.total > 0 ? Math.round(data.unlocked_count / data.total * 100) : 0;
+            document.getElementById('progress-text').textContent = `${data.unlocked_count} / ${data.total}`;
+            document.getElementById('progress-fill').style.width = pct + '%';
+            document.getElementById('progress-detail').textContent = `已完成 ${pct}%${pct >= 100 ? '，太棒了！🎉' : '，继续加油！'}`;
+            document.getElementById('progress-icon').textContent = pct >= 80 ? '👑' : (pct >= 40 ? '🌟' : '🎯');
+
+            // 类别名称映射
+            const catNames = {
+                'pomodoro': '🍅 番茄钟成就',
+                'streak': '🔥 连续打卡',
+                'time': '⏰ 学习时长',
+                'ai': '🤖 AI 探索',
+                'general': '📊 通用成就',
+                'special': '⭐ 特殊成就',
+            };
+
+            let html = '';
+            for (const [cat, items] of Object.entries(grouped)) {
+                const catName = catNames[cat] || cat;
+                const unlockedInCat = items.filter(i => i.unlocked).length;
+                html += `
+                <div class="card" style="margin-bottom:24px">
+                    <div class="card-header">
+                        <span class="card-title">${catName}</span>
+                        <span class="text-sm text-muted">${unlockedInCat}/${items.length}</span>
+                    </div>
+                    <div class="achievement-grid">`;
+
+                items.forEach(item => {
+                    html += `
+                        <div class="achievement-item ${item.unlocked ? 'unlocked' : 'locked'}">
+                            <div class="achievement-icon">${item.icon}</div>
+                            <div class="achievement-name">${item.name}</div>
+                            <div class="achievement-desc">${item.description}</div>
+                            ${item.unlocked
+                                ? `<div class="text-sm" style="color:var(--success);margin-top:4px">✅ ${formatDate(item.earned_at)}</div>`
+                                : `<div class="text-sm text-muted" style="margin-top:4px">🔒 未解锁</div>`
+                            }
+                        </div>`;
+                });
+
+                html += '</div></div>';
+            }
+
+            document.getElementById('all-achievements').innerHTML = html;
+
+            // 最近获得
+            const unlocked = data.list.filter(i => i.unlocked).sort((a, b) => {
+                return new Date(b.earned_at) - new Date(a.earned_at);
+            }).slice(0, 4);
+
+            if (unlocked.length > 0) {
+                document.getElementById('recent-card').classList.remove('hidden');
+                document.getElementById('recent-achievements').innerHTML = unlocked.map(a => `
+                    <div class="achievement-item unlocked" style="min-width:140px;flex:1">
+                        <div class="achievement-icon">${a.icon}</div>
+                        <div class="achievement-name">${a.name}</div>
+                        <div class="text-sm text-muted">${formatDate(a.earned_at)}</div>
+                    </div>`).join('');
+            }
+        }
+
+        async function loadStats() {
+            const result = await AchievementAPI.stats();
+            if (!result || result.code !== 200) return;
+            // 统计数据已在 achievement list 中展示，这里可用于额外信息
+        }
+
+        async function checkAchievements() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '检查中...';
+
+            const result = await AchievementAPI.check();
+            btn.disabled = false;
+            btn.textContent = '🔄 刷新成就状态';
+
+            if (result && result.code === 200) {
+                const newly = result.data.newly_unlocked;
+                if (newly.length > 0) {
+                    newly.forEach(a => showToast(`🏆 新成就解锁：${a.icon} ${a.name}`, 'success', 5000));
+                } else {
+                    showToast('当前没有新成就解锁，继续加油！💪', 'info');
+                }
+                // 重新加载
+                await loadAchievements();
+            }
+        }
+    </script>
+</body>
+</html>

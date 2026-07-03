@@ -1,0 +1,6 @@
+#ifndef LINKED_LIST_H
+#define LINKED_LIST_H
+
+void linked_list_handler(const char *action, const char *json_data, char *output);
+
+#endif

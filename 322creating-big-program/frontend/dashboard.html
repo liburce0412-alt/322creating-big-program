@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>首页 - campus3ai</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-logo"><span class="icon">🎓</span> campus3ai</div>
+            <ul class="sidebar-nav">
+                <li><a href="dashboard.html" class="active"><span class="nav-icon">📊</span> 首页</a></li>
+                <li><a href="pomodoro.html"><span class="nav-icon">🍅</span> 番茄钟</a></li>
+                <li><a href="records.html"><span class="nav-icon">📋</span> 时间记录</a></li>
+                <li><a href="stats.html"><span class="nav-icon">📈</span> 统计</a></li>
+                <li><a href="ai-report.html"><span class="nav-icon">🤖</span> AI 分析</a></li>
+                <li><a href="achievements.html"><span class="nav-icon">🏆</span> 成就</a></li>
+            </ul>
+            <div class="sidebar-footer">
+                <div class="sidebar-user" id="current-user">未登录</div>
+                <a href="#" id="btn-logout">退出登录</a>
+            </div>
+        </aside>
+
+        <!-- Main -->
+        <main class="main-content">
+            <div class="page-header">
+                <h1>📊 学习仪表盘</h1>
+                <p>欢迎回来！这是你的学习概览</p>
+            </div>
+
+            <div class="stats-grid" id="overview-stats">
+                <div class="stat-card">
+                    <div class="stat-icon">🍅</div>
+                    <div class="stat-value" id="stat-pomodoro">-</div>
+                    <div class="stat-label">今日番茄钟</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">⏰</div>
+                    <div class="stat-value" id="stat-focus">-</div>
+                    <div class="stat-label">总专注时长</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🔥</div>
+                    <div class="stat-value" id="stat-streak">-</div>
+                    <div class="stat-label">连续打卡天数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🏆</div>
+                    <div class="stat-value" id="stat-ach">-</div>
+                    <div class="stat-label">已解锁成就</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">📅 最近番茄钟</span></div>
+                <div id="recent-sessions"><div class="empty-state"><div class="empty-icon">🍅</div><div class="empty-text">暂无记录，开始你的第一个番茄钟吧！</div></div></div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/auth.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            // 加载概览数据
+            const pomStats = await PomodoroAPI.stats();
+            if (pomStats && pomStats.code === 200) {
+                document.getElementById('stat-pomodoro').textContent = pomStats.data.today_completed;
+                document.getElementById('stat-focus').textContent = pomStats.data.total_focus_hours + 'h';
+                document.getElementById('stat-streak').textContent = pomStats.data.current_streak_days + '天';
+            }
+
+            const achStats = await AchievementAPI.stats();
+            if (achStats && achStats.code === 200) {
+                document.getElementById('stat-ach').textContent = achStats.data.unlocked + '/' + achStats.data.total;
+            }
+
+            // 加载最近番茄钟
+            const sessions = await PomodoroAPI.list({ per_page: 5 });
+            if (sessions && sessions.code === 200 && sessions.data.list.length > 0) {
+                let html = '<table style="width:100%;border-collapse:collapse;font-size:0.9rem">';
+                sessions.data.list.forEach(s => {
+                    html += `<tr style="border-bottom:1px solid var(--border)">
+                        <td style="padding:8px">${s.task_name}</td>
+                        <td>${getStatusBadge(s.status)}</td>
+                        <td style="color:var(--text-secondary)">${formatDate(s.created_at)}</td>
+                    </tr>`;
+                });
+                html += '</table>';
+                document.getElementById('recent-sessions').innerHTML = html;
+            }
+        });
+    </script>
+</body>
+</html>
