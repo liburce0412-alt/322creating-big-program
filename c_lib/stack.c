@@ -1,7 +1,21 @@
+/* stack.c —— 时间记录撤销/重做
+ * 👤 李恩琪+余欣泽 负责填充实现
+ *
+ * 桩代码（使项目可编译）
+ */
+#include <stdio.h>
 #include <stdlib.h>
-#include stack.h
-Stack* stack_create(int cap) { Stack* s = malloc(sizeof(Stack)); s->items = malloc(sizeof(void*)*cap); s->top = -1; s->capacity = cap; return s; }
-void stack_push(Stack* s, void* item) { if(s->top < s->capacity-1) s->items[++s->top] = item; }
-void* stack_pop(Stack* s) { return s->top >= 0 ? s->items[s->top--] : NULL; }
-void* stack_peek(Stack* s) { return s->top >= 0 ? s->items[s->top] : NULL; }
-void stack_free(Stack* s) { free(s->items); free(s); }
+#include <string.h>
+#include "stack.h"
+
+char* stack_handle(const char *action, const char *data_json) {
+    (void) data_json;
+    if (!action) return strdup("{\"error\":\"missing action\"}");
+
+    /* TODO: 实现栈的逻辑 —— push/pop/redo_pop/clear/size */
+
+    char buf[256];
+    snprintf(buf, sizeof(buf),
+        "{\"message\":\"stack module stub: action '%s' not yet implemented\"}", action);
+    return strdup(buf);
+}
