@@ -20,7 +20,7 @@ from config import C_LIB_PATH
 logger = logging.getLogger(__name__)
 
 
-def call_c_module(module: str, action: str, data: dict | list | None = None) -> dict:
+ def call_c_module(module: str, action: str, data: dict = None) -> dict:
     """
     调用 C 模块。
 
@@ -79,7 +79,7 @@ def call_c_module(module: str, action: str, data: dict | list | None = None) -> 
         return {"status": "error", "error": str(e)}
 
 
-def _python_fallback(module: str, action: str, data: dict | list | None) -> dict:
+ def _python_fallback(module: str, action: str, data: dict) -> dict:
     """
     Python 版本的兜底实现（当 C 模块不可用时自动切换）。
     确保即使 C 编译有问题，后端也能正常运行和调试。

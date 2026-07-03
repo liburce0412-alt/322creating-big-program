@@ -2,15 +2,15 @@
 
 ## Current State
 - Website http://campus3ai.xyz/ homepage returns 200
-- Flask API returns 502 (c_bridge.py type hint issue)
+- Flask API returns 502 (c_bridge.py type hint issue) [DONE]
 - Git repo merged and pushed
 - brain/ dir created but files not fully written
 
 ## Next Steps
-1. Fix c_bridge.py: dict | list -> dict (Python 3.6)
+1. [DONE] Fix c_bridge.py: dict | list -> dict (Python 3.6)
 2. Restart Flask: nohup gunicorn ... --daemon
-3. Verify API endpoints
-4. Add .gitignore, commit and push brain/
+3. Verify API endpoints (check /api/ routes)
+4. Commit fixes and push to remote
 
 ## Unwritten Thoughts
 - VNC can restart services too
