@@ -29,11 +29,11 @@
 /* ---- 模块头文件 ---- */
 #include "linked_list.h"
 #include "queue.h"
+#include "stack.h"
+#include "kmp.h"
 #include "binary_search.h"
 
 /* 前向声明（其他组的模块，编译时需链接对应的 .c 文件）*/
-extern char* stack_handle(const char *action, const char *data_json);
-extern char* kmp_handle(const char *action, const char *data_json);
 extern char* hash_table_handle(const char *action, const char *data_json);
 
 /* ========== JSON 辅助函数 ========== */
@@ -162,12 +162,9 @@ int main(void) {
     } else if (strcmp(module, "binary_search") == 0) {
         result = binary_search_handle(action, data);
     } else if (strcmp(module, "stack") == 0) {
-        /* 交棒：李恩琪+余欣泽 填充 */
-        result = stack_handle ? stack_handle(action, data)
-                 : strdup("{\"error\":\"stack module not yet implemented\"}");
+        result = stack_handle(action, data);
     } else if (strcmp(module, "kmp") == 0) {
-        result = kmp_handle ? kmp_handle(action, data)
-                 : strdup("{\"error\":\"kmp module not yet implemented\"}");
+        result = kmp_handle(action, data);
     } else if (strcmp(module, "hash_table") == 0) {
         result = hash_table_handle ? hash_table_handle(action, data)
                  : strdup("{\"error\":\"hash_table module not yet implemented\"}");

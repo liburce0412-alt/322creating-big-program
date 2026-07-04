@@ -34,20 +34,14 @@ main.o: main.c linked_list.h queue.h binary_search.h stack.h kmp.h hash_table.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # 如果某个组的 .c 还没写，创建空桩以便编译通过
-stack.o: stack.c stack.h
-	$(CC) $(CFLAGS) -c -o $@ $< 2>/dev/null || true
-
-kmp.o: kmp.c kmp.h
-	$(CC) $(CFLAGS) -c -o $@ $< 2>/dev/null || true
-
 hash_table.o: hash_table.c hash_table.h
 	$(CC) $(CFLAGS) -c -o $@ $< 2>/dev/null || true
 
-# 仅编译已完成的模块（谢佳杨负责的 3 个 + main.c）
-partial: main.c linked_list.c linked_list.h queue.c queue.h binary_search.c binary_search.h
-	$(CC) $(CFLAGS) -o $(TARGET) main.c linked_list.c queue.c binary_search.c $(LDFLAGS) \
-		-Wl,--allow-multiple-definition
-	@echo "✅ Partial build (3 modules): ./$(TARGET)"
+# 仅编译核心模块（陈+丁超轶负责的模块 + main.c）
+partial: main.c linked_list.c linked_list.h queue.c queue.h \
+         stack.c stack.h kmp.c kmp.h binary_search.c binary_search.h
+	$(CC) $(CFLAGS) -o $(TARGET) main.c linked_list.c queue.c stack.c kmp.c binary_search.c $(LDFLAGS)
+	@echo "✅ Partial build (core modules): ./$(TARGET)"
 
 # 测试
 test: $(TARGET)
@@ -64,6 +58,22 @@ test: $(TARGET)
 	@echo '{"module":"queue","action":"size"}' | ./$(TARGET)
 	@echo ""
 	@echo '{"module":"queue","action":"dequeue"}' | ./$(TARGET)
+	@echo ""
+	@echo "=== 测试 stack (undo/redo) ==="
+	@echo '{"module":"stack","action":"push","data":{"category":"学习","description":"复习高数","duration_min":90}}' | ./$(TARGET)
+	@echo ""
+	@echo '{"module":"stack","action":"push","data":{"category":"运动","description":"跑步5公里","duration_min":30}}' | ./$(TARGET)
+	@echo ""
+	@echo '{"module":"stack","action":"undo_size"}' | ./$(TARGET)
+	@echo ""
+	@echo '{"module":"stack","action":"pop"}' | ./$(TARGET)
+	@echo ""
+	@echo '{"module":"stack","action":"redo_pop"}' | ./$(TARGET)
+	@echo ""
+	@echo "=== 测试 kmp (关键词搜索) ==="
+	@echo '{"module":"kmp","action":"match_single","data":{"text":"复习高等数学第三章","pattern":"高等数学"}}' | ./$(TARGET)
+	@echo ""
+	@echo '{"module":"kmp","action":"search","data":{"keyword":"高数","records":[{"id":1,"category":"学习","description":"复习高数"},{"id":2,"category":"运动","description":"跑步"},{"id":3,"category":"学习","description":"高数作业"}]}}' | ./$(TARGET)
 	@echo ""
 	@echo "=== 测试 binary_search ==="
 	@echo '{"module":"binary_search","action":"search_by_time","data":{"target":1700000000,"records":[{"id":1,"timestamp":1600000000},{"id":2,"timestamp":1700000000},{"id":3,"timestamp":1800000000}]}}' | ./$(TARGET)
