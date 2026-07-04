@@ -27,7 +27,7 @@ def generate_token(user_id: int, username: str) -> str:
     return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
 
 
-def verify_token(token: str) -> dict | None:
+def verify_token(token: str):
     """验证 JWT token，返回 payload 或 None"""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
@@ -59,7 +59,7 @@ def login_required(f):
     return decorated
 
 
-def get_user_by_id(user_id: int) -> dict | None:
+def get_user_by_id(user_id: int):
     """通过 ID 获取用户信息"""
     db = get_db()
     user = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()

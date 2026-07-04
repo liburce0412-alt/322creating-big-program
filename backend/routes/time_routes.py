@@ -44,6 +44,7 @@ def add_time_record():
         "INSERT INTO time_records (user_id, category, description, duration_min) VALUES (?, ?, ?, ?)",
         (g.user_id, category, description, duration_min)
     )
+    db.commit()
     record_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
 
     # 添加经验
@@ -55,7 +56,6 @@ def add_time_record():
     from routes.pomodoro_routes import check_and_unlock_achievements
     new_achievements = check_and_unlock_achievements(g.user_id, db)
 
-    db.commit()
     db.close()
 
     return jsonify({
@@ -212,3 +212,80 @@ def redo_record():
     if result.get("status") == "ok":
         return jsonify({"message": "重做成功", "record": result.get("result")})
     return jsonify({"error": "没有可重做的记录"}), 400
+
+
+@time_bp.route("/time-records/<int:record_id>", methods=["GET"])
+@login_required
+def get_time_record(record_id):
+    """获取单条时间记录"""
+    db = get_db()
+    record = db.execute(
+        "SELECT * FROM time_records WHERE id = ? AND user_id = ?",
+        (record_id, g.user_id)
+    ).fetchone()
+    db.close()
+    if not record:
+        return jsonify({"error": "记录不存在"}), 404
+    return jsonify({"record": dict(record)})
+
+
+@time_bp.route("/time-records/<int:record_id>", methods=["PUT"])
+@login_required
+def update_time_record(record_id):
+    """
+    更新时间记录
+
+    请求体 JSON:
+        { "category": "学习", "description": "复习高数", "duration_min": 120 }
+    三个字段均为可选，至少提供一个
+    """
+    db = get_db()
+    record = db.execute(
+        "SELECT id FROM time_records WHERE id = ? AND user_id = ?",
+        (record_id, g.user_id)
+    ).fetchone()
+    if not record:
+        db.close()
+        return jsonify({"error": "记录不存在"}), 404
+
+    data = request.get_json(silent=True) or {}
+    updates = []
+    params = []
+
+    if "category" in data:
+        category = (data["category"] or "").strip()
+        if not category:
+            db.close()
+            return jsonify({"error": "类别不能为空"}), 400
+        updates.append("category = ?")
+        params.append(category)
+
+    if "description" in data:
+        updates.append("description = ?")
+        params.append((data["description"] or "").strip())
+
+    if "duration_min" in data:
+        duration = data["duration_min"]
+        if duration <= 0:
+            db.close()
+            return jsonify({"error": "时长必须大于 0"}), 400
+        updates.append("duration_min = ?")
+        params.append(duration)
+
+    if not updates:
+        db.close()
+        return jsonify({"error": "请提供要修改的字段"}), 400
+
+    params.append(record_id)
+    db.execute(
+        "UPDATE time_records SET {} WHERE id = ?".format(", ".join(updates)),
+        params
+    )
+    db.commit()
+
+    updated = db.execute(
+        "SELECT * FROM time_records WHERE id = ?", (record_id,)
+    ).fetchone()
+    db.close()
+
+    return jsonify({"message": "记录已更新", "record": dict(updated)})

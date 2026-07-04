@@ -10,3 +10,12 @@ venv/
 dist/
 build/
 *.spec
+
+*.db
+*.db-shm
+*.db-wal
+*.exe
+*.o
+__pycache__/
+backend/__pycache__/
+backend/routes/__pycache__/

@@ -16,7 +16,7 @@ SECRET_KEY = os.environ.get("CAMPUS_SECRET", "campus-ai-secret-key-2024")
 TOKEN_EXPIRE_HOURS = 72
 
 # C 模块可执行文件路径
-C_LIB_PATH = os.path.join(BASE_DIR, "..", "c_lib", "campus_lib")
+C_LIB_PATH = os.path.join(BASE_DIR, "..", "c_lib", "campus_lib.exe")
 
 # AI 模型 API 配置
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"

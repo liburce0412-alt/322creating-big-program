@@ -20,7 +20,7 @@ from config import C_LIB_PATH
 logger = logging.getLogger(__name__)
 
 
- def call_c_module(module: str, action: str, data: dict = None) -> dict:
+def call_c_module(module: str, action: str, data: dict = None) -> dict:
     """
     调用 C 模块。
 
@@ -79,7 +79,7 @@ logger = logging.getLogger(__name__)
         return {"status": "error", "error": str(e)}
 
 
- def _python_fallback(module: str, action: str, data: dict) -> dict:
+def _python_fallback(module: str, action: str, data: dict) -> dict:
     """
     Python 版本的兜底实现（当 C 模块不可用时自动切换）。
     确保即使 C 编译有问题，后端也能正常运行和调试。
@@ -98,6 +98,14 @@ logger = logging.getLogger(__name__)
     if module == "binary_search":
         return _binary_search_fallback(action, data)
 
+    # ---- stack fallback ----
+    if module == "stack":
+        return _stack_fallback(action, data)
+
+    # ---- hash_table fallback ----
+    if module == "hash_table":
+        return _hash_table_fallback(action, data)
+
     # ---- 其他模块（暂未实现 fallback）----
     return {"status": "error", "error": f"Module '{module}' not available (no C binary and no Python fallback)"}
 
@@ -107,6 +115,96 @@ logger = logging.getLogger(__name__)
 # 内存中的简易存储（仅供 fallback 使用）
 _fb_linked_list = []    # list of dict
 _fb_queue = []          # list of dict
+
+
+def _stack_fallback(action: str, data: dict) -> dict:
+    """栈的 Python fallback（支持撤销/重做）"""
+    global _fb_stack, _fb_redo_stack
+
+    if action == "push":
+        _fb_stack.append(data)
+        return {"status": "ok", "result": {"size": len(_fb_stack), "pushed": True}}
+
+    if action == "pop":
+        if not _fb_stack:
+            return {"status": "ok", "result": {"empty": True}}
+        item = _fb_stack.pop()
+        _fb_redo_stack.append(item)
+        return {"status": "ok", "result": {"popped": True, "item": item}}
+
+    if action == "peek":
+        if not _fb_stack:
+            return {"status": "ok", "result": {"empty": True}}
+        return {"status": "ok", "result": {"item": _fb_stack[-1]}}
+
+    if action == "redo_pop":
+        if not _fb_redo_stack:
+            return {"status": "ok", "result": {"empty": True}}
+        item = _fb_redo_stack.pop()
+        _fb_stack.append(item)
+        return {"status": "ok", "result": {"popped": True, "item": item}}
+
+    if action == "size":
+        return {"status": "ok", "result": {"size": len(_fb_stack)}}
+
+    if action == "clear":
+        _fb_stack.clear()
+        _fb_redo_stack.clear()
+        return {"status": "ok", "result": {"cleared": True}}
+
+    return {"status": "error", "error": f"Unknown stack action: {action}"}
+
+
+def _hash_table_fallback(action: str, data: dict) -> dict:
+    """哈希表的 Python fallback（快速检索用户/记录）"""
+    global _fb_hash_table
+
+    if action == "insert":
+        key = str(data.get("key", ""))
+        value = data.get("value", {})
+        _fb_hash_table[key] = value
+        return {"status": "ok", "result": {"inserted": True, "size": len(_fb_hash_table)}}
+
+    if action == "search":
+        key = str(data.get("key", ""))
+        if key in _fb_hash_table:
+            return {"status": "ok", "result": {"found": True, "value": _fb_hash_table[key]}}
+        return {"status": "ok", "result": {"found": False}}
+
+    if action == "delete":
+        key = str(data.get("key", ""))
+        if key in _fb_hash_table:
+            del _fb_hash_table[key]
+            return {"status": "ok", "result": {"deleted": True, "size": len(_fb_hash_table)}}
+        return {"status": "ok", "result": {"deleted": False}}
+
+    if action == "size":
+        return {"status": "ok", "result": {"size": len(_fb_hash_table)}}
+
+    if action == "clear":
+        _fb_hash_table.clear()
+        return {"status": "ok", "result": {"cleared": True, "size": 0}}
+
+    if action == "keys":
+        return {"status": "ok", "result": {"keys": list(_fb_hash_table.keys())}}
+
+    if action == "bulk_insert":
+        items = data if isinstance(data, list) else data.get("items", [])
+        count = 0
+        for item in items:
+            k = str(item.get("key", ""))
+            v = item.get("value", {})
+            if k:
+                _fb_hash_table[k] = v
+                count += 1
+        return {"status": "ok", "result": {"inserted": count, "size": len(_fb_hash_table)}}
+
+    return {"status": "error", "error": f"Unknown hash_table action: {action}"}
+
+
+_fb_stack = []
+_fb_redo_stack = []
+_fb_hash_table = {}
 
 
 def _linked_list_fallback(action: str, data: dict) -> dict:
