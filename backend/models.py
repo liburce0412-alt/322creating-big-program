@@ -8,7 +8,7 @@ from config import DATABASE
 
 def get_db():
     """获取数据库连接（开启 WAL 模式 + 外键约束）"""
-    conn = sqlite3.connect(DATABASE)
+    conn = sqlite3.connect(DATABASE, timeout=10)
     conn.row_factory = sqlite3.Row      # 查询结果可用 dict-like 访问
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -104,7 +104,7 @@ def init_db():
 
     conn.commit()
     conn.close()
-    print("✅ Database initialized successfully.")
+    print("[OK] Database initialized successfully.")
 
 
 if __name__ == "__main__":

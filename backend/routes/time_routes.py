@@ -47,10 +47,10 @@ def add_time_record():
     db.commit()
     record_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
 
-    # 添加经验
+    # 添加经验（传入 db 避免多连接冲突）
     from auth import add_exp
     from config import EXP_PER_RECORD
-    add_exp(g.user_id, EXP_PER_RECORD)
+    add_exp(g.user_id, EXP_PER_RECORD, db=db)
 
     # 检查成就
     from routes.pomodoro_routes import check_and_unlock_achievements

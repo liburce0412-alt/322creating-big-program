@@ -102,6 +102,10 @@ def _python_fallback(module: str, action: str, data: dict) -> dict:
     if module == "stack":
         return _stack_fallback(action, data)
 
+    # ---- kmp fallback ----
+    if module == "kmp":
+        return _kmp_fallback(action, data)
+
     # ---- hash_table fallback ----
     if module == "hash_table":
         return _hash_table_fallback(action, data)
@@ -115,44 +119,6 @@ def _python_fallback(module: str, action: str, data: dict) -> dict:
 # 内存中的简易存储（仅供 fallback 使用）
 _fb_linked_list = []    # list of dict
 _fb_queue = []          # list of dict
-
-
-def _stack_fallback(action: str, data: dict) -> dict:
-    """栈的 Python fallback（支持撤销/重做）"""
-    global _fb_stack, _fb_redo_stack
-
-    if action == "push":
-        _fb_stack.append(data)
-        return {"status": "ok", "result": {"size": len(_fb_stack), "pushed": True}}
-
-    if action == "pop":
-        if not _fb_stack:
-            return {"status": "ok", "result": {"empty": True}}
-        item = _fb_stack.pop()
-        _fb_redo_stack.append(item)
-        return {"status": "ok", "result": {"popped": True, "item": item}}
-
-    if action == "peek":
-        if not _fb_stack:
-            return {"status": "ok", "result": {"empty": True}}
-        return {"status": "ok", "result": {"item": _fb_stack[-1]}}
-
-    if action == "redo_pop":
-        if not _fb_redo_stack:
-            return {"status": "ok", "result": {"empty": True}}
-        item = _fb_redo_stack.pop()
-        _fb_stack.append(item)
-        return {"status": "ok", "result": {"popped": True, "item": item}}
-
-    if action == "size":
-        return {"status": "ok", "result": {"size": len(_fb_stack)}}
-
-    if action == "clear":
-        _fb_stack.clear()
-        _fb_redo_stack.clear()
-        return {"status": "ok", "result": {"cleared": True}}
-
-    return {"status": "error", "error": f"Unknown stack action: {action}"}
 
 
 def _hash_table_fallback(action: str, data: dict) -> dict:
@@ -202,8 +168,6 @@ def _hash_table_fallback(action: str, data: dict) -> dict:
     return {"status": "error", "error": f"Unknown hash_table action: {action}"}
 
 
-_fb_stack = []
-_fb_redo_stack = []
 _fb_hash_table = {}
 
 
@@ -345,3 +309,191 @@ def _binary_search_fallback(action: str, data: dict) -> dict:
         return {"status": "ok", "result": {"sorted": sorted_flag, "count": len(records)}}
 
     return {"status": "error", "error": f"Unknown binary_search action: {action}"}
+
+
+# ---- Stack fallback (undo/redo) 陈+丁超轶 ----
+_fb_undo_stack = []   # 撤销栈
+_fb_redo_stack = []   # 重做栈
+
+
+def _stack_fallback(action: str, data: dict) -> dict:
+    """撤销/重做栈的 Python fallback"""
+    global _fb_undo_stack, _fb_redo_stack
+
+    if action == "push":
+        _fb_undo_stack.append(data)
+        _fb_redo_stack.clear()  # 新操作清空重做栈
+        return {"status": "ok", "result": {
+            "pushed": True, "undo_size": len(_fb_undo_stack),
+            "redo_size": len(_fb_redo_stack),
+            "message": "record pushed to undo stack"
+        }}
+
+    if action == "pop":
+        if not _fb_undo_stack:
+            return {"status": "ok", "result": {
+                "undone": False, "error": "undo stack is empty",
+                "undo_size": 0, "redo_size": 0
+            }}
+        record = _fb_undo_stack.pop()
+        _fb_redo_stack.append(record)
+        return {"status": "ok", "result": {
+            "undone": True, "record": record,
+            "undo_size": len(_fb_undo_stack),
+            "redo_size": len(_fb_redo_stack),
+            "message": "undo successful"
+        }}
+
+    if action == "redo_pop":
+        if not _fb_redo_stack:
+            return {"status": "ok", "result": {
+                "redone": False, "error": "redo stack is empty",
+                "undo_size": 0, "redo_size": 0
+            }}
+        record = _fb_redo_stack.pop()
+        _fb_undo_stack.append(record)
+        return {"status": "ok", "result": {
+            "redone": True, "record": record,
+            "undo_size": len(_fb_undo_stack),
+            "redo_size": len(_fb_redo_stack),
+            "message": "redo successful"
+        }}
+
+    if action in ("undo_size", "size"):
+        return {"status": "ok", "result": {
+            "undo_size": len(_fb_undo_stack),
+            "redo_size": len(_fb_redo_stack)
+        }}
+
+    if action == "peek_undo":
+        if not _fb_undo_stack:
+            return {"status": "ok", "result": {"found": False}}
+        return {"status": "ok", "result": {
+            "found": True, "record": _fb_undo_stack[-1],
+            "undo_size": len(_fb_undo_stack),
+            "redo_size": len(_fb_redo_stack)
+        }}
+
+    if action == "peek_redo":
+        if not _fb_redo_stack:
+            return {"status": "ok", "result": {"found": False}}
+        return {"status": "ok", "result": {
+            "found": True, "record": _fb_redo_stack[-1],
+            "undo_size": len(_fb_undo_stack),
+            "redo_size": len(_fb_redo_stack)
+        }}
+
+    if action == "clear":
+        old_undo = len(_fb_undo_stack)
+        old_redo = len(_fb_redo_stack)
+        _fb_undo_stack.clear()
+        _fb_redo_stack.clear()
+        return {"status": "ok", "result": {
+            "cleared": True,
+            "removed_undo": old_undo,
+            "removed_redo": old_redo,
+            "undo_size": 0, "redo_size": 0
+        }}
+
+    return {"status": "error", "error": f"Unknown stack action: {action}"}
+
+
+def _kmp_fallback(action: str, data: dict) -> dict:
+    """KMP 关键词搜索的 Python fallback（陈+丁超轶）"""
+    data = data or {}
+
+    def _build_lps(pattern: str):
+        """构建 KMP LPS 数组"""
+        m = len(pattern)
+        lps = [0] * m
+        length = 0
+        i = 1
+        while i < m:
+            if pattern[i] == pattern[length]:
+                length += 1
+                lps[i] = length
+                i += 1
+            else:
+                if length != 0:
+                    length = lps[length - 1]
+                else:
+                    lps[i] = 0
+                    i += 1
+        return lps
+
+    def _kmp_search(text: str, pattern: str, case_sensitive: bool = False):
+        """KMP 搜索，返回匹配位置列表"""
+        if not pattern or not text:
+            return []
+        if not case_sensitive:
+            text = text.lower()
+            pattern = pattern.lower()
+        n, m = len(text), len(pattern)
+        if m > n:
+            return []
+        lps = _build_lps(pattern)
+        matches = []
+        i = j = 0
+        while i < n:
+            if pattern[j] == text[i]:
+                i += 1
+                j += 1
+            if j == m:
+                matches.append(i - j)
+                j = lps[j - 1] if j > 0 else 0
+            elif i < n and pattern[j] != text[i]:
+                if j != 0:
+                    j = lps[j - 1]
+                else:
+                    i += 1
+        return matches
+
+    if action == "search":
+        keyword = data.get("keyword", "")
+        records = data.get("records", [])
+        if not keyword:
+            return {"status": "ok", "result": {"keyword": "", "count": 0, "matches": []}}
+
+        matches = []
+        for rec in records:
+            desc = str(rec.get("description", ""))
+            cat = str(rec.get("category", ""))
+            found_in_desc = _kmp_search(desc, keyword)
+            found_in_cat = _kmp_search(cat, keyword)
+            if found_in_desc or found_in_cat:
+                matches.append(rec)
+
+        return {"status": "ok", "result": {
+            "keyword": keyword,
+            "count": len(matches),
+            "matches": matches,
+            "source": "python_kmp_fallback"
+        }}
+
+    if action == "match_single":
+        text = data.get("text", "")
+        pattern = data.get("pattern", "")
+        case_sensitive = data.get("case_sensitive", False)
+        if not text or not pattern:
+            return {"status": "error", "error": "text and pattern are required"}
+        positions = _kmp_search(text, pattern, case_sensitive)
+        return {"status": "ok", "result": {
+            "found": len(positions) > 0,
+            "count": len(positions),
+            "positions": positions,
+            "text": text,
+            "pattern": pattern
+        }}
+
+    if action == "build_lps":
+        pattern = data.get("pattern", "")
+        if not pattern:
+            return {"status": "error", "error": "pattern is required"}
+        lps = _build_lps(pattern)
+        return {"status": "ok", "result": {
+            "pattern": pattern,
+            "length": len(pattern),
+            "lps": lps
+        }}
+
+    return {"status": "error", "error": f"Unknown kmp action: {action}"}

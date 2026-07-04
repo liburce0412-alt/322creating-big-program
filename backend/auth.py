@@ -59,22 +59,36 @@ def login_required(f):
     return decorated
 
 
-def get_user_by_id(user_id: int):
-    """通过 ID 获取用户信息"""
-    db = get_db()
+def get_user_by_id(user_id: int, db=None):
+    """通过 ID 获取用户信息（db 参数可选，传入则复用连接）"""
+    own_db = db is None
+    if own_db:
+        db = get_db()
     user = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    db.close()
+    if own_db:
+        db.close()
+    if user:
+        return dict(user)
+    return None
+    if own_db:
+        db.close()
     if user:
         return dict(user)
     return None
 
 
-def add_exp(user_id: int, amount: int) -> dict:
-    """给用户增加经验值，返回 {level_up: bool, new_level: int, exp: int}"""
-    db = get_db()
+def add_exp(user_id: int, amount: int, db=None) -> dict:
+    """给用户增加经验值，返回 {level_up: bool, new_level: int, exp: int}
+
+    db 参数可选：传入已有数据库连接时复用，否则自己创建。
+    """
+    own_db = db is None
+    if own_db:
+        db = get_db()
     user = db.execute("SELECT level, exp FROM users WHERE id = ?", (user_id,)).fetchone()
     if not user:
-        db.close()
+        if own_db:
+            db.close()
         return {"level_up": False, "new_level": 1, "exp": 0}
 
     level = user["level"]
@@ -91,8 +105,9 @@ def add_exp(user_id: int, amount: int) -> dict:
         needed = int(LEVEL_UP_BASE * (1.5 ** (level - 1)))
 
     db.execute("UPDATE users SET level = ?, exp = ? WHERE id = ?", (level, exp, user_id))
-    db.commit()
-    db.close()
+    if own_db:
+        db.commit()
+        db.close()
 
     return {
         "level_up": level_up,
