@@ -142,6 +142,7 @@ def complete_pomodoro():
         (g.user_id, duration, EXP_PER_POMODORO)
     )
     session_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    db.commit()
 
     # 加经验值
     exp_result = add_exp(g.user_id, EXP_PER_POMODORO)
