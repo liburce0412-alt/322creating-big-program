@@ -24,7 +24,8 @@ def generate_token(user_id: int, username: str) -> str:
                datetime.timedelta(hours=TOKEN_EXPIRE_HOURS),
         "iat": datetime.datetime.now(datetime.timezone.utc)
     }
-    return jwt.encode(payload, SECRET_KEY, algorithm="HS256").decode("utf-8")
+    token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+    return token.decode("utf-8") if isinstance(token, bytes) else token
 
 
 def verify_token(token: str):
