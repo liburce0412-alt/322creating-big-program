@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>番茄钟 - 校园达人 CampusAI</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
@@ -13,21 +13,26 @@
 
         .duration-selector {
             display: flex;
-            gap: 12px;
+            flex-wrap: wrap;
+            gap: 8px;
             justify-content: center;
-            margin-bottom: 24px;
+            margin-bottom: 20px;
         }
 
         .duration-btn {
-            padding: 10px 24px;
+            flex: 1 1 auto;
+            min-width: 90px;
+            padding: 10px 12px;
             border: 2px solid var(--border);
             border-radius: 24px;
             background: var(--bg-card);
             cursor: pointer;
-            font-size: 1rem;
+            font-size: var(--fs-sm);
             font-weight: 600;
             font-family: var(--font);
             transition: all var(--transition);
+            text-align: center;
+            min-height: 44px;
         }
 
         .duration-btn:hover {
@@ -41,29 +46,46 @@
             border-color: var(--primary);
         }
 
-        .timer-circle {
-            width: 280px;
-            height: 280px;
-            margin: 0 auto;
-            position: relative;
+        .duration-btn small {
+            display: block;
+            font-weight: 400;
+            font-size: var(--fs-xs);
+            opacity: 0.8;
+        }
+
+        /* 计时器圆圈 — 响应式尺寸 */
+        .timer-circle-wrap {
             display: flex;
             align-items: center;
             justify-content: center;
+            margin: 0 auto;
         }
 
-        .timer-circle canvas {
+        .timer-circle-inner {
+            position: relative;
+            width: min(260px, 70vw);
+            height: min(260px, 70vw);
+        }
+
+        .timer-circle-inner canvas {
             position: absolute;
             top: 0; left: 0;
+            width: 100%;
+            height: 100%;
         }
 
         .timer-text {
-            position: relative;
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
             z-index: 1;
-            text-align: center;
         }
 
         .timer-minutes {
-            font-size: 5rem;
+            font-size: clamp(2.5rem, 12vw, 5rem);
             font-weight: 800;
             color: var(--primary);
             line-height: 1;
@@ -71,25 +93,34 @@
         }
 
         .timer-seconds {
-            font-size: 2.5rem;
+            font-size: clamp(1.2rem, 6vw, 2.5rem);
             font-weight: 600;
             color: var(--text-secondary);
         }
 
         .timer-status {
-            font-size: 0.9rem;
+            font-size: var(--fs-sm);
             color: var(--text-secondary);
-            margin-top: 8px;
+            margin-top: 6px;
         }
 
         .session-counter {
             text-align: center;
-            margin-top: 16px;
+            margin-top: 14px;
             color: var(--text-secondary);
-            font-size: 0.9rem;
+            font-size: var(--fs-sm);
         }
 
-        .reward-modal .reward-icon {
+        /* 移动端：按钮全宽 */
+        @media (max-width: 599px) {
+            .timer-controls .btn {
+                flex: 1 1 auto;
+                min-width: 80px;
+            }
+        }
+
+        /* 弹窗动画 */
+        .reward-icon {
             font-size: 4rem;
             animation: bounce 0.6s ease;
         }
@@ -102,11 +133,12 @@
 
         .new-badge {
             display: inline-block;
-            padding: 8px 16px;
+            padding: 6px 14px;
             margin: 4px;
             background: linear-gradient(135deg, #FFD700, #FFA500);
             border-radius: 20px;
             font-weight: 600;
+            font-size: var(--fs-sm);
             animation: popIn 0.4s ease;
         }
 
@@ -129,24 +161,26 @@
     <!-- 时长选择 -->
     <div class="duration-selector">
         <button class="duration-btn active" data-min="25" onclick="setDuration(25, this)">
-            🍅 25 分钟<br><small>标准专注</small>
+            🍅 25 分钟<small>标准专注</small>
         </button>
         <button class="duration-btn" data-min="50" onclick="setDuration(50, this)">
-            ⏰ 50 分钟<br><small>深度专注</small>
+            ⏰ 50 分钟<small>深度专注</small>
         </button>
         <button class="duration-btn" data-min="90" onclick="setDuration(90, this)">
-            🔥 90 分钟<br><small>极限冲刺</small>
+            🔥 90 分钟<small>极限冲刺</small>
         </button>
     </div>
 
     <!-- 计时器 -->
     <div class="card">
-        <div class="timer-circle">
-            <canvas id="timer-canvas" width="280" height="280"></canvas>
-            <div class="timer-text">
-                <div class="timer-minutes" id="timer-minutes">25</div>
-                <div class="timer-seconds" id="timer-seconds">:00</div>
-                <div class="timer-status" id="timer-status">准备开始</div>
+        <div class="timer-circle-wrap">
+            <div class="timer-circle-inner">
+                <canvas id="timer-canvas"></canvas>
+                <div class="timer-text">
+                    <div class="timer-minutes" id="timer-minutes">25</div>
+                    <div class="timer-seconds" id="timer-seconds">:00</div>
+                    <div class="timer-status" id="timer-status">准备开始</div>
+                </div>
             </div>
         </div>
 
@@ -169,7 +203,7 @@
     </div>
 
     <!-- 历史记录 -->
-    <div class="card" style="margin-top: 20px;">
+    <div class="card" style="margin-top: 16px;">
         <div class="card-header">📋 最近番茄钟记录</div>
         <div id="recent-sessions">
             <p class="text-muted">加载中...</p>
@@ -195,12 +229,20 @@
 <script src="js/utils.js"></script>
 <script>
 // ==================== 番茄钟状态 ====================
-let durationMin = 25;
-let remainingSec = 25 * 60;
-let totalSec = 25 * 60;
-let timerInterval = null;
-let isRunning = false;
-let isPaused = false;
+var durationMin = 25;
+var remainingSec = 25 * 60;
+var totalSec = 25 * 60;
+var timerInterval = null;
+var isRunning = false;
+var isPaused = false;
+
+// Canvas 尺寸
+var canvasSize = 280;
+
+function getCanvasSize() {
+    var w = window.innerWidth;
+    return Math.min(260, Math.floor(w * 0.7));
+}
 
 // ==================== UI 控制 ====================
 
@@ -212,23 +254,36 @@ function setDuration(min, btn) {
     updateDisplay();
     drawTimerRing(1);
 
-    document.querySelectorAll('.duration-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.duration-btn').forEach(function(b) { b.classList.remove('active'); });
     btn.classList.add('active');
 }
 
 function updateDisplay() {
-    const min = Math.floor(remainingSec / 60);
-    const sec = remainingSec % 60;
+    var min = Math.floor(remainingSec / 60);
+    var sec = remainingSec % 60;
     document.getElementById('timer-minutes').textContent = min;
     document.getElementById('timer-seconds').textContent = ':' + String(sec).padStart(2, '0');
 }
 
-function drawTimerRing(progress) {
-    const canvas = document.getElementById('timer-canvas');
-    const ctx = canvas.getContext('2d');
-    const cx = 140, cy = 140, r = 120, lineW = 10;
+function setupCanvas() {
+    canvasSize = getCanvasSize();
+    var canvas = document.getElementById('timer-canvas');
+    canvas.width = canvasSize;
+    canvas.height = canvasSize;
+    canvas.style.width = canvasSize + 'px';
+    canvas.style.height = canvasSize + 'px';
+}
 
-    ctx.clearRect(0, 0, 280, 280);
+function drawTimerRing(progress) {
+    setupCanvas();
+    var canvas = document.getElementById('timer-canvas');
+    var ctx = canvas.getContext('2d');
+    var cx = canvasSize / 2;
+    var cy = canvasSize / 2;
+    var r = canvasSize / 2 - 12;
+    var lineW = Math.max(6, canvasSize / 24);
+
+    ctx.clearRect(0, 0, canvasSize, canvasSize);
 
     // 背景圆环
     ctx.beginPath();
@@ -265,14 +320,12 @@ function startTimer() {
     document.getElementById('btn-pause').classList.remove('hidden');
     document.getElementById('btn-reset').classList.remove('hidden');
 
-    // 禁用时长切换
-    document.querySelectorAll('.duration-btn').forEach(b => b.style.pointerEvents = 'none');
+    document.querySelectorAll('.duration-btn').forEach(function(b) { b.style.pointerEvents = 'none'; });
 
-    timerInterval = setInterval(() => {
+    timerInterval = setInterval(function() {
         remainingSec--;
         updateDisplay();
-
-        const progress = remainingSec / totalSec;
+        var progress = remainingSec / totalSec;
         drawTimerRing(progress);
 
         if (remainingSec <= 0) {
@@ -305,8 +358,7 @@ function resetTimer() {
     document.getElementById('btn-pause').classList.add('hidden');
     document.getElementById('btn-reset').classList.add('hidden');
 
-    // 恢复时长切换
-    document.querySelectorAll('.duration-btn').forEach(b => b.style.pointerEvents = 'auto');
+    document.querySelectorAll('.duration-btn').forEach(function(b) { b.style.pointerEvents = 'auto'; });
 }
 
 async function completePomodoro() {
@@ -319,7 +371,7 @@ async function completePomodoro() {
     drawTimerRing(0);
 
     try {
-        const result = await api.completePomodoro(durationMin);
+        var result = await api.completePomodoro(durationMin);
         showReward(result);
     } catch (err) {
         console.error('完成番茄钟失败:', err);
@@ -327,14 +379,12 @@ async function completePomodoro() {
         resetTimer();
     }
 
-    // 恢复时长切换
-    document.querySelectorAll('.duration-btn').forEach(b => b.style.pointerEvents = 'auto');
+    document.querySelectorAll('.duration-btn').forEach(function(b) { b.style.pointerEvents = 'auto'; });
     document.getElementById('btn-start').classList.remove('hidden');
     document.getElementById('btn-start').textContent = '▶ 再来一个';
     document.getElementById('btn-pause').classList.add('hidden');
     document.getElementById('btn-reset').classList.add('hidden');
 
-    // 刷新统计
     loadStats();
     loadRecentSessions();
 }
@@ -342,26 +392,23 @@ async function completePomodoro() {
 // ==================== 完成弹窗 ====================
 
 function showReward(result) {
-    const modal = document.getElementById('reward-modal');
-    const titleEl = document.getElementById('reward-title');
-    const textEl = document.getElementById('reward-text');
-    const badgesEl = document.getElementById('reward-badges');
-    const iconEl = document.getElementById('reward-icon');
+    var modal = document.getElementById('reward-modal');
+    var titleEl = document.getElementById('reward-title');
+    var textEl = document.getElementById('reward-text');
+    var badgesEl = document.getElementById('reward-badges');
+    var iconEl = document.getElementById('reward-icon');
 
-    // 基础信息
     titleEl.textContent = result.level_up ? '🎉 升级了！' : '🍅 番茄钟完成！';
     iconEl.textContent = result.level_up ? '🎉' : '🍅';
-    textEl.innerHTML = `
-        获得 <strong>+${result.exp_gained}</strong> 经验值<br>
-        当前等级：<strong>Lv.${result.new_level}</strong>
-    `;
+    textEl.innerHTML =
+        '获得 <strong>+' + result.exp_gained + '</strong> 经验值<br>' +
+        '当前等级：<strong>Lv.' + result.new_level + '</strong>';
 
-    // 新成就
     if (result.new_achievements && result.new_achievements.length > 0) {
         badgesEl.innerHTML = '<p style="margin-bottom:8px;">🏆 解锁新成就：</p>' +
-            result.new_achievements.map(a =>
-                `<span class="new-badge">${a.icon} ${a.name}</span>`
-            ).join('');
+            result.new_achievements.map(function(a) {
+                return '<span class="new-badge">' + a.icon + ' ' + a.name + '</span>';
+            }).join('');
     } else {
         badgesEl.innerHTML = '';
     }
@@ -378,7 +425,7 @@ function closeReward() {
 
 async function loadStats() {
     try {
-        const stats = await api.getPomodoroStats();
+        var stats = await api.getPomodoroStats();
         document.getElementById('today-count').textContent = stats.today_sessions;
         document.getElementById('streak-days').textContent = stats.streak_days;
     } catch (e) {
@@ -388,21 +435,21 @@ async function loadStats() {
 
 async function loadRecentSessions() {
     try {
-        const data = await api.getPomodoroHistory(1, 5);
-        const container = document.getElementById('recent-sessions');
+        var data = await api.getPomodoroHistory(1, 5);
+        var container = document.getElementById('recent-sessions');
         if (!data.sessions || data.sessions.length === 0) {
             container.innerHTML = '<p class="text-muted">还没有番茄钟记录，开始你的第一个吧！</p>';
             return;
         }
-        container.innerHTML = data.sessions.map(s => `
-            <div style="display: flex; justify-content: space-between; align-items: center;
-                        padding: 10px 0; border-bottom: 1px solid var(--border);">
-                <span>🍅 ${s.duration_min} 分钟专注</span>
-                <span style="color: var(--text-secondary); font-size: 0.85rem;">
-                    +${s.exp_gained} exp · ${utils.timeAgo(s.completed_at)}
-                </span>
-            </div>
-        `).join('');
+        container.innerHTML = data.sessions.map(function(s) {
+            return '<div style="display: flex; justify-content: space-between; align-items: center; ' +
+                        'padding: 10px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 4px;">' +
+                '<span>🍅 ' + s.duration_min + ' 分钟专注</span>' +
+                '<span style="color: var(--text-secondary); font-size: 0.85rem;">' +
+                    '+' + s.exp_gained + ' exp · ' + utils.timeAgo(s.completed_at) +
+                '</span>' +
+            '</div>';
+        }).join('');
     } catch (e) {
         console.error('加载历史失败:', e);
     }
@@ -413,6 +460,7 @@ async function loadRecentSessions() {
 async function init() {
     if (!auth.requireLogin()) return;
     await auth.renderNavbar();
+    setupCanvas();
     drawTimerRing(1);
     updateDisplay();
     await loadStats();
@@ -421,8 +469,18 @@ async function init() {
 
 document.addEventListener('DOMContentLoaded', init);
 
+// 窗口大小变化时重新绘制
+window.addEventListener('resize', function() {
+    if (!isRunning) {
+        setupCanvas();
+        drawTimerRing(1);
+    } else {
+        drawTimerRing(remainingSec / totalSec);
+    }
+});
+
 // 页面离开前提醒
-window.addEventListener('beforeunload', (e) => {
+window.addEventListener('beforeunload', function(e) {
     if (isRunning) {
         e.preventDefault();
         e.returnValue = '番茄钟还在运行中，确定离开吗？';

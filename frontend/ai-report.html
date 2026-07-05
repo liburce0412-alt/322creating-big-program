@@ -2,28 +2,47 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>AI 分析报告 - 校园达人 CampusAI</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
         .ai-layout {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
+            grid-template-columns: 1fr;
+            gap: 16px;
         }
 
-        @media (max-width: 768px) {
-            .ai-layout { grid-template-columns: 1fr; }
+        @media (min-width: 768px) {
+            .ai-layout {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        .model-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        @media (max-width: 380px) {
+            .model-grid {
+                grid-template-columns: 1fr;
+            }
         }
 
         .model-card {
-            padding: 16px;
+            padding: 14px;
             border: 2px solid var(--border);
             border-radius: var(--radius);
             cursor: pointer;
             text-align: center;
             transition: all var(--transition);
             position: relative;
+            min-height: 80px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
         }
 
         .model-card:hover {
@@ -37,43 +56,49 @@
         }
 
         .model-card .model-icon {
-            font-size: 2.5rem;
+            font-size: 2rem;
             display: block;
-            margin-bottom: 8px;
+            margin-bottom: 4px;
         }
 
         .model-card .model-name {
             font-weight: 700;
-            font-size: 1.1rem;
+            font-size: var(--fs-sm);
         }
 
         .model-card .model-desc {
-            font-size: 0.85rem;
+            font-size: var(--fs-xs);
             color: var(--text-secondary);
-            margin-top: 4px;
+            margin-top: 2px;
         }
 
         .model-card .unavailable-badge {
             position: absolute;
-            top: 8px;
-            right: 8px;
+            top: 6px;
+            right: 6px;
             background: var(--danger);
             color: #fff;
-            padding: 2px 8px;
+            padding: 2px 6px;
             border-radius: 10px;
-            font-size: 0.7rem;
+            font-size: 0.65rem;
         }
 
         .report-content {
             background: #FAFBFC;
             border-radius: var(--radius);
-            padding: 24px;
+            padding: 20px;
             line-height: 1.8;
-            font-size: 0.95rem;
-            max-height: 600px;
+            font-size: var(--fs-sm);
+            max-height: 500px;
             overflow-y: auto;
             white-space: pre-wrap;
             word-break: break-word;
+        }
+
+        @media (min-width: 768px) {
+            .report-content {
+                max-height: 600px;
+            }
         }
 
         .report-content h2 {
@@ -99,20 +124,27 @@
             font-style: italic;
         }
 
+        /* 聊天区域 */
         .chat-box {
             border: 1px solid var(--border);
             border-radius: var(--radius);
-            padding: 16px;
-            max-height: 400px;
+            padding: 14px;
+            max-height: 300px;
             overflow-y: auto;
             background: #FAFBFC;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
+        }
+
+        @media (min-width: 768px) {
+            .chat-box {
+                max-height: 400px;
+            }
         }
 
         .chat-msg {
-            margin-bottom: 12px;
+            margin-bottom: 10px;
             display: flex;
-            gap: 10px;
+            gap: 8px;
         }
 
         .chat-msg.user {
@@ -120,11 +152,12 @@
         }
 
         .chat-msg .bubble {
-            max-width: 80%;
+            max-width: 85%;
             padding: 10px 14px;
             border-radius: 16px;
-            font-size: 0.9rem;
+            font-size: var(--fs-sm);
             line-height: 1.5;
+            word-break: break-word;
         }
 
         .chat-msg.assistant .bubble {
@@ -145,6 +178,11 @@
 
         .chat-input-row input {
             flex: 1;
+            min-width: 0;
+        }
+
+        .chat-input-row .btn {
+            flex-shrink: 0;
         }
     </style>
 </head>
@@ -159,23 +197,23 @@
     </div>
 
     <div class="ai-layout">
-        <!-- 左侧：模型选择 + 历史报告 -->
+        <!-- 左侧：模型选择 + 历史报告 + 对话 -->
         <div>
             <!-- 模型选择 -->
             <div class="card">
                 <div class="card-header">🧠 选择 AI 模型</div>
-                <div id="model-list" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div id="model-list" class="model-grid">
                     <p class="text-muted">加载中...</p>
                 </div>
                 <div class="text-center mt-2">
-                    <button class="btn btn-primary btn-lg" id="btn-generate" onclick="generateReport()">
+                    <button class="btn btn-primary btn-lg btn-responsive" id="btn-generate" onclick="generateReport()">
                         ✨ 生成分析报告
                     </button>
                 </div>
-                <div id="generate-status" class="text-center mt-1"></div>
+                <div id="generate-status" class="text-center mt-1" style="font-size: var(--fs-sm);"></div>
             </div>
 
-            <!-- 历史报告 -->
+            <!-- 历史报告列表 -->
             <div class="card">
                 <div class="card-header">📋 历史报告</div>
                 <div id="reports-list">
@@ -193,7 +231,7 @@
                 </div>
                 <div class="chat-input-row">
                     <input type="text" class="form-input" id="chat-input"
-                           placeholder="输入问题，例如：如何提高学习效率？"
+                           placeholder="输入问题..."
                            onkeypress="if(event.key==='Enter') sendMessage()">
                     <button class="btn btn-primary" onclick="sendMessage()">发送</button>
                 </div>
@@ -219,7 +257,7 @@
 <script src="js/auth.js"></script>
 <script src="js/utils.js"></script>
 <script>
-let selectedModel = 'mock';
+var selectedModel = 'mock';
 
 // ==================== 初始化 ====================
 
@@ -232,18 +270,18 @@ async function init() {
 
 async function loadModels() {
     try {
-        const data = await api.getAiModels();
-        const container = document.getElementById('model-list');
-        container.innerHTML = data.models.map(m => `
-            <div class="model-card ${m.id === selectedModel ? 'selected' : ''}"
-                 onclick="selectModel('${m.id}', this)"
-                 id="model-${m.id}">
-                ${!m.available && m.id !== 'mock' ? '<span class="unavailable-badge">未配置</span>' : ''}
-                <span class="model-icon">${m.icon}</span>
-                <div class="model-name">${m.name}</div>
-                <div class="model-desc">${m.description}</div>
-            </div>
-        `).join('');
+        var data = await api.getAiModels();
+        var container = document.getElementById('model-list');
+        container.innerHTML = data.models.map(function(m) {
+            return '<div class="model-card' + (m.id === selectedModel ? ' selected' : '') + '"' +
+                 ' onclick="selectModel(\'' + m.id + '\', this)"' +
+                 ' id="model-' + m.id + '">' +
+                (m.available === false && m.id !== 'mock' ? '<span class="unavailable-badge">未配置</span>' : '') +
+                '<span class="model-icon">' + m.icon + '</span>' +
+                '<div class="model-name">' + m.name + '</div>' +
+                '<div class="model-desc">' + m.description + '</div>' +
+            '</div>';
+        }).join('');
     } catch (e) {
         console.error('加载模型列表失败:', e);
     }
@@ -251,37 +289,39 @@ async function loadModels() {
 
 function selectModel(id, el) {
     selectedModel = id;
-    document.querySelectorAll('.model-card').forEach(c => c.classList.remove('selected'));
+    document.querySelectorAll('.model-card').forEach(function(c) { c.classList.remove('selected'); });
     el.classList.add('selected');
 }
 
 // ==================== 生成报告 ====================
 
 async function generateReport() {
-    const btn = document.getElementById('btn-generate');
-    const status = document.getElementById('generate-status');
-    const reportEl = document.getElementById('report-content');
+    var btn = document.getElementById('btn-generate');
+    var status = document.getElementById('generate-status');
+    var reportEl = document.getElementById('report-content');
 
     btn.disabled = true;
     btn.textContent = '⏳ 正在生成...';
-    reportEl.innerHTML = '<div class="text-center" style="padding:40px;"><span class="spinner"></span><p class="mt-2">AI 正在分析你的数据...</p></div>';
+    reportEl.innerHTML = '<div class="text-center" style="padding:40px;">' +
+        '<span class="spinner spinner-lg"></span>' +
+        '<p class="mt-2">AI 正在分析你的数据...</p></div>';
     status.innerHTML = '';
 
     try {
-        const data = await api.generateReport(selectedModel);
+        var data = await api.generateReport(selectedModel);
         reportEl.innerHTML = data.content;
 
         if (data.new_achievements && data.new_achievements.length > 0) {
-            data.new_achievements.forEach(a => {
-                utils.toast(`🏆 解锁成就：${a.name}`, 'success');
+            data.new_achievements.forEach(function(a) {
+                utils.toast('🏆 解锁成就：' + a.name, 'success');
             });
         }
 
-        status.innerHTML = `<span class="text-success">✅ 报告生成成功 (${data.model})</span>`;
-        await loadReports(); // 刷新历史列表
+        status.innerHTML = '<span class="text-success">✅ 报告生成成功 (' + data.model + ')</span>';
+        await loadReports();
     } catch (err) {
         console.error('生成报告失败:', err);
-        reportEl.innerHTML = `<p class="text-danger text-center">生成失败：${err.message}</p>`;
+        reportEl.innerHTML = '<p class="text-danger text-center">生成失败：' + err.message + '</p>';
         status.innerHTML = '<span class="text-danger">❌ 生成失败，请重试</span>';
     } finally {
         btn.disabled = false;
@@ -291,21 +331,21 @@ async function generateReport() {
 
 async function loadReports() {
     try {
-        const data = await api.getReports();
-        const container = document.getElementById('reports-list');
+        var data = await api.getReports();
+        var container = document.getElementById('reports-list');
         if (!data.reports || data.reports.length === 0) {
             container.innerHTML = '<p class="text-muted">还没有报告</p>';
             return;
         }
-        container.innerHTML = data.reports.map(r => `
-            <div style="padding: 10px 0; border-bottom: 1px solid var(--border);
-                        cursor: pointer; display: flex; justify-content: space-between; align-items: center;"
-                 onclick="loadReportDetail(${r.id})" title="点击查看详情">
-                <span>🤖 ${r.model}</span>
-                <span style="font-size: 0.8rem; color: var(--text-secondary);">${r.preview}...</span>
-                <span style="font-size: 0.75rem; color: #999;">${utils.timeAgo(r.created_at)}</span>
-            </div>
-        `).join('');
+        container.innerHTML = data.reports.map(function(r) {
+            return '<div style="padding: 10px 0; border-bottom: 1px solid var(--border);' +
+                        'cursor: pointer; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;"' +
+                 ' onclick="loadReportDetail(' + r.id + ')" title="点击查看详情">' +
+                '<span>🤖 ' + r.model + '</span>' +
+                '<span style="font-size:0.8rem; color: var(--text-secondary);">' + (r.preview || '') + '</span>' +
+                '<span style="font-size:0.75rem; color:#999;">' + utils.timeAgo(r.created_at) + '</span>' +
+            '</div>';
+        }).join('');
     } catch (e) {
         console.error('加载报告列表失败:', e);
     }
@@ -313,7 +353,7 @@ async function loadReports() {
 
 async function loadReportDetail(id) {
     try {
-        const data = await api.getReportDetail(id);
+        var data = await api.getReportDetail(id);
         document.getElementById('report-content').innerHTML = data.report_content;
         utils.toast('已加载历史报告', 'info');
     } catch (e) {
@@ -324,50 +364,48 @@ async function loadReportDetail(id) {
 // ==================== AI 对话 ====================
 
 async function sendMessage() {
-    const input = document.getElementById('chat-input');
-    const message = input.value.trim();
+    var input = document.getElementById('chat-input');
+    var message = input.value.trim();
     if (!message) return;
 
     input.value = '';
-    const chatBox = document.getElementById('chat-box');
+    var chatBox = document.getElementById('chat-box');
 
     // 添加用户消息
-    chatBox.innerHTML += `
-        <div class="chat-msg user">
-            <div class="bubble">${escapeHtml(message)}</div>
-        </div>
-    `;
+    chatBox.innerHTML +=
+        '<div class="chat-msg user">' +
+            '<div class="bubble">' + escapeHtml(message) + '</div>' +
+        '</div>';
 
-    // 添加加载指示
-    const loadingHtml = `
-        <div class="chat-msg assistant" id="loading-msg">
-            <div class="bubble"><span class="spinner" style="width:16px;height:16px;border-width:2px;"></span> 思考中...</div>
-        </div>
-    `;
-    chatBox.innerHTML += loadingHtml;
+    // 加载指示
+    var loadingId = 'loading-' + Date.now();
+    chatBox.innerHTML +=
+        '<div class="chat-msg assistant" id="' + loadingId + '">' +
+            '<div class="bubble"><span class="spinner" style="width:16px;height:16px;border-width:2px;"></span> 思考中...</div>' +
+        '</div>';
     chatBox.scrollTop = chatBox.scrollHeight;
 
     try {
-        const data = await api.sendChatMessage(message);
-        document.getElementById('loading-msg')?.remove();
-        chatBox.innerHTML += `
-            <div class="chat-msg assistant">
-                <div class="bubble">${escapeHtml(data.reply)}</div>
-            </div>
-        `;
+        var data = await api.sendChatMessage(message);
+        var loadingEl = document.getElementById(loadingId);
+        if (loadingEl) loadingEl.remove();
+        chatBox.innerHTML +=
+            '<div class="chat-msg assistant">' +
+                '<div class="bubble">' + escapeHtml(data.reply) + '</div>' +
+            '</div>';
         chatBox.scrollTop = chatBox.scrollHeight;
     } catch (err) {
-        document.getElementById('loading-msg')?.remove();
-        chatBox.innerHTML += `
-            <div class="chat-msg assistant">
-                <div class="bubble" style="color:var(--danger);">抱歉，回复失败：${escapeHtml(err.message)}</div>
-            </div>
-        `;
+        var loadingEl = document.getElementById(loadingId);
+        if (loadingEl) loadingEl.remove();
+        chatBox.innerHTML +=
+            '<div class="chat-msg assistant">' +
+                '<div class="bubble" style="color:var(--danger);">抱歉，回复失败：' + escapeHtml(err.message) + '</div>' +
+            '</div>';
     }
 }
 
 function escapeHtml(str) {
-    const div = document.createElement('div');
+    var div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
 }
