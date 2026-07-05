@@ -45,8 +45,10 @@ const api = {
             localStorage.removeItem('campus_user');
             if (window.location.pathname !== '/login.html' &&
                 window.location.pathname !== '/register.html' &&
-                window.location.pathname !== '/') {
-                window.location.href = '/login.html';
+                window.location.pathname !== '/' &&
+                !window.location.pathname.endsWith('login.html') &&
+                !window.location.pathname.endsWith('register.html')) {
+                window.location.href = 'login.html';
             }
             throw new Error('登录已过期，请重新登录');
         }
