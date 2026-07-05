@@ -1,700 +1,460 @@
-# ai_routes.py — AI 分析 API 路由
-# 负责：GET /api/ai/report         — 生成 AI 分析报告（DeepSeek / Gemini）
-#       GET /api/ai/chat-history   — 获取对话历史（C 双向链表存储）
-#       POST /api/ai/queue-status  — 查看 AI 请求队列状态
+"""
+ai_routes.py —— AI 分析 API
+谢佳杨 负责
 
-import json
-import requests
-from datetime import datetime, timedelta
+接口：
+  GET  /api/ai/report         — 生成 AI 分析报告（调用 DeepSeek / Gemini）
+  GET  /api/ai/reports        — 获取历史 AI 报告列表
+  GET  /api/ai/reports/<id>   — 获取单份 AI 报告详情
+  GET  /api/ai/chat-history   — 获取 AI 对话历史（通过 C 模块双向链表管理）
+  POST /api/ai/chat           — 发送消息给 AI（对话功能）
+  GET  /api/ai/models         — 获取可用的 AI 模型列表
+"""
 from flask import Blueprint, request, jsonify, g
-
-import config
+from auth import login_required
 from models import get_db
-from c_bridge import (
-    queue_enqueue, queue_dequeue, queue_peek,
-    queue_size, queue_is_empty, queue_clear,
-    call_c_module
-)
+from config import DEEPSEEK_API_URL, DEEPSEEK_API_KEY, GEMINI_API_URL, GEMINI_API_KEY
+from c_bridge import call_c_module
+import requests
+import json
+import logging
+from datetime import datetime
 
-ai_bp = Blueprint('ai', __name__)
+logger = logging.getLogger(__name__)
 
-
-# ============================================================
-# 辅助函数
-# ============================================================
-
-def _get_current_user_id():
-    """获取当前用户 ID（同 pomodoro_routes.py 中的实现）"""
-    if hasattr(g, 'user_id') and g.user_id:
-        return g.user_id
-    import jwt
-    auth_header = request.headers.get('Authorization', '')
-    if auth_header.startswith('Bearer '):
-        token = auth_header[7:]
-        try:
-            payload = jwt.decode(token, config.SECRET_KEY, algorithms=['HS256'])
-            return payload.get('user_id')
-        except Exception:
-            return None
-    return None
+ai_bp = Blueprint("ai", __name__)
 
 
-def _fetch_user_context(user_id: int) -> dict:
+# ==================== 辅助函数 ====================
+
+def _build_analysis_prompt(user_id: int, username: str, db=None) -> str:
     """
-    获取用户的时间数据上下文（用于构建 AI 提示词）。
-    返回最近 7 天的时间记录和番茄钟数据。
+    根据用户的时间记录和番茄钟数据，构建分析报告的 prompt。
+    从数据库提取统计数据，拼成自然语言。
     """
-    conn = get_db()
-    cursor = conn.cursor()
+    if db is None:
+        db = get_db()
 
-    seven_days_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+    # 时间记录总数
+    total_records = db.execute(
+        "SELECT COUNT(*) as cnt FROM time_records WHERE user_id = ?", (user_id,)
+    ).fetchone()["cnt"]
 
-    # 时间记录汇总
-    time_records = cursor.execute(
-        "SELECT category, SUM(duration_min) as total_min, COUNT(*) as count "
-        "FROM time_records WHERE user_id = ? AND created_at >= ? "
-        "GROUP BY category ORDER BY total_min DESC",
-        (user_id, seven_days_ago)
+    # 各类别时间分布
+    categories = db.execute(
+        """SELECT category, SUM(duration_min) as total_min, COUNT(*) as cnt
+           FROM time_records WHERE user_id = ?
+           GROUP BY category ORDER BY total_min DESC""",
+        (user_id,)
     ).fetchall()
 
-    # 番茄钟汇总
-    pomodoro_stats = cursor.execute(
-        "SELECT COUNT(*) as total, SUM(duration_min) as total_min, "
-        "AVG(duration_min) as avg_min "
-        "FROM pomodoro_sessions WHERE user_id = ? AND completed_at >= ?",
-        (user_id, seven_days_ago)
-    ).fetchone()
+    # 番茄钟统计
+    total_pomodoros = db.execute(
+        "SELECT COUNT(*) as cnt FROM pomodoro_sessions WHERE user_id = ?", (user_id,)
+    ).fetchone()["cnt"]
+    total_focus_min = db.execute(
+        "SELECT COALESCE(SUM(duration_min), 0) as total FROM pomodoro_sessions WHERE user_id = ?", (user_id,)
+    ).fetchone()["total"]
 
-    # 每日番茄钟趋势
-    daily_pomodoros = cursor.execute(
-        "SELECT DATE(completed_at) as date, COUNT(*) as count, "
-        "SUM(duration_min) as total_min "
-        "FROM pomodoro_sessions WHERE user_id = ? AND completed_at >= ? "
-        "GROUP BY DATE(completed_at) ORDER BY date",
-        (user_id, seven_days_ago)
+    # 活跃天数
+    active_days = db.execute(
+        """SELECT COUNT(DISTINCT date(created_at)) as cnt
+           FROM time_records WHERE user_id = ?""",
+        (user_id,)
+    ).fetchone()["cnt"]
+
+    # 最近 7 天趋势
+    recent = db.execute(
+        """SELECT date(created_at) as day, SUM(duration_min) as total_min
+           FROM time_records WHERE user_id = ?
+           AND created_at >= date('now', '-7 days')
+           GROUP BY date(created_at) ORDER BY day""",
+        (user_id,)
     ).fetchall()
 
-    # 用户信息
-    user = cursor.execute(
-        "SELECT username, level, exp FROM users WHERE id = ?", (user_id,)
-    ).fetchone()
+    if db is None:
+        db.close()
 
-    conn.close()
+    # 构建 prompt
+    cat_lines = "\n".join([
+        f"  - {c['category']}: {c['total_min']} 分钟（{c['cnt']} 次）"
+        for c in categories
+    ]) if categories else "  （暂无记录）"
 
-    return {
-        'username': user['username'] if user else '未知',
-        'level': user['level'] if user else 1,
-        'exp': user['exp'] if user else 0,
-        'time_records': [dict(r) for r in time_records],
-        'pomodoro_stats': dict(pomodoro_stats) if pomodoro_stats else {},
-        'daily_pomodoros': [dict(d) for d in daily_pomodoros],
-    }
+    recent_lines = "\n".join([
+        f"  - {r['day']}: {r['total_min']} 分钟"
+        for r in recent
+    ]) if recent else "  （暂无记录）"
 
+    prompt = f"""你是一位专业的时间管理教练，请根据以下用户的《校园达人》使用数据，生成一份个性化的时间分析报告。
 
-def _build_analysis_prompt(context: dict) -> str:
-    """
-    根据用户数据构建 AI 分析提示词。
-    """
-    username = context['username']
-    level = context['level']
-    exp = context['exp']
+## 用户 "{username}" 的数据
 
-    time_records_str = '\n'.join(
-        f"- {r['category']}: {r['total_min']} 分钟（{r['count']}次）"
-        for r in context['time_records']
-    ) if context['time_records'] else '（暂无时间记录数据）'
+- 总时间记录数：{total_records} 条
+- 总番茄钟次数：{total_pomodoros} 次
+- 累计专注时长：{total_focus_min} 分钟
+- 活跃天数：{active_days} 天
 
-    pomo = context['pomodoro_stats']
-    pomo_str = (
-        f"总计 {pomo.get('total', 0)} 次番茄钟，"
-        f"累计 {pomo.get('total_min', 0)} 分钟，"
-        f"平均每次 {pomo.get('avg_min', 0):.0f} 分钟"
-    ) if pomo else '（暂无番茄钟数据）'
+### 时间按类别分布：
+{cat_lines}
 
-    daily_str = '\n'.join(
-        f"- {d['date']}: {d['count']} 次番茄钟，共 {d['total_min']} 分钟"
-        for d in context['daily_pomodoros']
-    ) if context['daily_pomodoros'] else '（暂无每日数据）'
+### 最近 7 天趋势：
+{recent_lines}
 
-    prompt = f"""你是一个时间管理分析助手。请根据以下用户数据，生成一份简洁的时间管理分析报告。
+---
 
-【用户信息】
-- 用户名: {username}
-- 等级: Lv.{level}
-- 总经验值: {exp}
+请生成一份包含以下内容的分析报告（Markdown 格式）：
 
-【近7天时间分配】
-{time_records_str}
+1. **📊 时间使用概览**：总体评价用户的时间分配情况
+2. **🔍 模式识别**：发现用户的时间使用规律和习惯
+3. **💡 优化建议**：给出 3 条具体可操作的时间管理改进建议
+4. **🎯 下周目标**：为用户设定 2-3 个合理的时间管理目标
+5. **🌟 鼓励寄语**：给用户一句鼓励的话
 
-【番茄钟统计】
-{pomo_str}
-
-【每日番茄钟趋势】
-{daily_str}
-
-请从以下几个方面给出分析（总计 200-400 字）：
-1. 时间分配是否合理？有哪些可以优化的地方？
-2. 专注趋势如何？番茄钟使用习惯评价。
-3. 给出 2-3 条具体的改进建议。
-4. 一句鼓励的话。
-
-请用中文输出，语气友好、鼓励为主。"""
+请使用友好的语气，像一位贴心的学习伙伴。"""
     return prompt
 
 
-# ============================================================
-# 调用 DeepSeek API
-# ============================================================
+def _call_deepseek(prompt: str) -> str:
+    """调用 DeepSeek API 生成报告"""
+    if not DEEPSEEK_API_KEY:
+        raise ValueError("DeepSeek API Key 未配置")
 
-def call_deepseek_api(prompt: str) -> dict:
-    """
-    调用 DeepSeek API 生成分析报告。
-
-    参数:
-        prompt: 分析提示词
-
-    返回:
-        {"status": "ok", "content": "...", "model": "deepseek-chat"}
-        或 {"status": "error", "message": "..."}
-    """
     headers = {
-        'Authorization': f'Bearer {config.DEEPSEEK_API_KEY}',
-        'Content-Type': 'application/json',
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+        "Content-Type": "application/json"
     }
     payload = {
-        'model': config.DEEPSEEK_MODEL,
-        'messages': [
-            {
-                'role': 'system',
-                'content': '你是一个专业的时间管理分析助手，擅长通过数据给出友好的建议。'
-            },
-            {
-                'role': 'user',
-                'content': prompt,
-            },
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "system", "content": "你是一位专业的时间管理教练，名叫「校园达人AI助手」。请用中文回答，使用友好的语气。"},
+            {"role": "user", "content": prompt}
         ],
-        'temperature': 0.7,
-        'max_tokens': 1024,
-        'stream': False,
+        "temperature": 0.7,
+        "max_tokens": 2048
     }
 
-    try:
-        resp = requests.post(
-            config.DEEPSEEK_API_URL,
-            headers=headers,
-            json=payload,
-            timeout=config.AI_REQUEST_TIMEOUT,
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            content = data['choices'][0]['message']['content']
-            return {
-                'status': 'ok',
-                'content': content,
-                'model': config.DEEPSEEK_MODEL,
-            }
-        else:
-            return {
-                'status': 'error',
-                'message': f'DeepSeek API 返回错误 ({resp.status_code}): {resp.text[:500]}'
-            }
-    except requests.exceptions.Timeout:
-        return {'status': 'error', 'message': 'DeepSeek API 请求超时'}
-    except requests.exceptions.ConnectionError:
-        return {'status': 'error', 'message': '无法连接到 DeepSeek API，请检查网络'}
-    except Exception as e:
-        return {'status': 'error', 'message': f'DeepSeek API 调用异常: {str(e)}'}
+    resp = requests.post(DEEPSEEK_API_URL, headers=headers, json=payload, timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
+    return data["choices"][0]["message"]["content"]
 
 
-# ============================================================
-# 调用 Gemini API
-# ============================================================
+def _call_gemini(prompt: str) -> str:
+    """调用 Gemini API 生成报告"""
+    if not GEMINI_API_KEY:
+        raise ValueError("Gemini API Key 未配置")
 
-def call_gemini_api(prompt: str) -> dict:
-    """
-    调用 Google Gemini API 生成分析报告（备用模型）。
-
-    参数:
-        prompt: 分析提示词
-
-    返回:
-        {"status": "ok", "content": "...", "model": "gemini-pro"}
-        或 {"status": "error", "message": "..."}
-    """
-    url = f'{config.GEMINI_API_URL}?key={config.GEMINI_API_KEY}'
+    url = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
     payload = {
-        'contents': [
-            {
-                'parts': [
-                    {
-                        'text': (
-                            '你是一个专业的时间管理分析助手，擅长通过数据给出友好的建议。\n\n'
-                            + prompt
-                        )
-                    }
-                ]
-            }
-        ],
-        'generationConfig': {
-            'temperature': 0.7,
-            'maxOutputTokens': 1024,
-        },
+        "contents": [
+            {"parts": [{"text": "你是一位专业的时间管理教练。请用中文回答。\n\n" + prompt}]}
+        ]
     }
 
-    try:
-        resp = requests.post(
-            url,
-            json=payload,
-            timeout=config.AI_REQUEST_TIMEOUT,
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            # Gemini 响应格式与 DeepSeek 不同，需要适配
-            candidates = data.get('candidates', [])
-            if candidates:
-                content = candidates[0].get('content', {})
-                parts = content.get('parts', [])
-                text = ''.join(p.get('text', '') for p in parts)
-                return {
-                    'status': 'ok',
-                    'content': text,
-                    'model': config.GEMINI_MODEL,
-                }
-            else:
-                return {
-                    'status': 'error',
-                    'message': f'Gemini API 返回了空的响应内容'
-                }
-        elif resp.status_code == 429:
-            return {'status': 'error', 'message': 'Gemini API 配额已用完，请稍后再试'}
-        else:
-            return {
-                'status': 'error',
-                'message': f'Gemini API 返回错误 ({resp.status_code}): {resp.text[:500]}'
-            }
-    except requests.exceptions.Timeout:
-        return {'status': 'error', 'message': 'Gemini API 请求超时'}
-    except requests.exceptions.ConnectionError:
-        return {'status': 'error', 'message': '无法连接到 Gemini API，请检查网络'}
-    except Exception as e:
-        return {'status': 'error', 'message': f'Gemini API 调用异常: {str(e)}'}
+    resp = requests.post(url, json=payload, timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
+    return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
-# ============================================================
-# 统一的 AI 调用入口（带模型选择 + 队列管理）
-# ============================================================
+# ==================== API 接口 ====================
 
-def call_ai_model(prompt: str, model: str = 'deepseek') -> dict:
+@ai_bp.route("/ai/models", methods=["GET"])
+def get_available_models():
+    """获取可用的 AI 模型列表"""
+    models = [
+        {"id": "deepseek", "name": "DeepSeek", "icon": "🤖",
+         "description": "DeepSeek-V3，高效且精准的AI模型",
+         "available": bool(DEEPSEEK_API_KEY)},
+        {"id": "gemini", "name": "Gemini", "icon": "🧠",
+         "description": "Google Gemini Pro，全球领先的多模态模型",
+         "available": bool(GEMINI_API_KEY)},
+        {"id": "mock", "name": "演示模式", "icon": "📋",
+         "description": "无需API Key，生成示例报告（答辩用）",
+         "available": True},
+    ]
+    return jsonify({"models": models})
+
+
+@ai_bp.route("/ai/report", methods=["GET"])
+@login_required
+def generate_report():
     """
-    统一的 AI 模型调用入口。
+    生成 AI 分析报告
 
-    参数:
-        prompt: 分析提示词
-        model: 模型选择 — "deepseek"（默认）或 "gemini"（备用）
+    查询参数：
+        ?model=deepseek   (可选，默认 deepseek，可选 gemini / mock)
 
-    返回:
-        {"status": "ok", "content": "...", "model": "..."}
-        如果首选模型失败且为 deepseek，会自动尝试 gemini 作为 fallback。
-    """
-    # 首选模型
-    if model == 'deepseek':
-        result = call_deepseek_api(prompt)
-        if result['status'] == 'ok':
-            return result
-        # DeepSeek 失败 → 自动切换到 Gemini 作为备用
-        fallback_result = call_gemini_api(prompt)
-        if fallback_result['status'] == 'ok':
-            fallback_result['fallback'] = True
-            fallback_result['fallback_reason'] = result.get('message', 'DeepSeek 不可用')
-            return fallback_result
-        # 两个都失败了
-        return {
-            'status': 'error',
-            'message': f'所有 AI 模型均不可用。DeepSeek: {result.get("message")}; Gemini: {fallback_result.get("message")}'
-        }
-
-    elif model == 'gemini':
-        result = call_gemini_api(prompt)
-        if result['status'] == 'ok':
-            return result
-        # Gemini 失败 → 自动切换到 DeepSeek
-        fallback_result = call_deepseek_api(prompt)
-        if fallback_result['status'] == 'ok':
-            fallback_result['fallback'] = True
-            fallback_result['fallback_reason'] = result.get('message', 'Gemini 不可用')
-            return fallback_result
-        return {
-            'status': 'error',
-            'message': f'所有 AI 模型均不可用。Gemini: {result.get("message")}; DeepSeek: {fallback_result.get("message")}'
-        }
-
-    else:
-        return {'status': 'error', 'message': f'不支持的模型: {model}。支持: deepseek, gemini'}
-
-
-# ============================================================
-# 通过 C 队列模块管理 AI 请求
-# ============================================================
-
-def process_ai_queue() -> dict:
-    """
-    处理 AI 请求队列：从 C 队列模块中逐条取出请求并调用 AI。
-    每次调用最多处理 1 条（避免单次请求超时）。
-
-    队列中的每项格式:
-        {"user_id": 1, "prompt": "...", "model": "deepseek"}
-
-    返回:
-        {"status": "ok", "processed": 1, "results": [...]}
-        或 {"status": "ok", "processed": 0, "message": "队列为空"}
-    """
-    if queue_is_empty():
-        return {'status': 'ok', 'processed': 0, 'message': '队列为空'}
-
-    # 从 C 队列中取出一个请求
-    result = queue_dequeue()
-    if result.get('status') != 'ok' or not result.get('result'):
-        return {'status': 'error', 'message': '从队列取数据失败'}
-
-    try:
-        item = json.loads(result['result']) if isinstance(result['result'], str) else result['result']
-    except (json.JSONDecodeError, TypeError):
-        return {'status': 'error', 'message': '队列中的数据格式错误'}
-
-    user_id = item.get('user_id')
-    prompt = item.get('prompt', '')
-    model = item.get('model', 'deepseek')
-
-    # 调用 AI
-    ai_result = call_ai_model(prompt, model)
-
-    # 保存到数据库
-    if ai_result.get('status') == 'ok' and user_id:
-        conn = get_db()
-        try:
-            conn.execute(
-                "INSERT INTO ai_reports (user_id, report_content, model) VALUES (?, ?, ?)",
-                (user_id, ai_result['content'], ai_result.get('model', model))
-            )
-            # 同时写入 chat_history（供 C 双向链表查询）
-            conn.execute(
-                "INSERT INTO chat_history (user_id, role, content) VALUES (?, 'assistant', ?)",
-                (user_id, ai_result['content'])
-            )
-            conn.commit()
-        except Exception as e:
-            pass  # 保存失败不影响返回结果
-        finally:
-            conn.close()
-
-    return {
-        'status': 'ok',
-        'processed': 1,
-        'results': [ai_result],
-        'remaining_in_queue': queue_size(),
-    }
-
-
-# ============================================================
-# GET /api/ai/report — 生成 AI 分析报告（核心接口）
-# ============================================================
-
-@ai_bp.route('/api/ai/report', methods=['GET'])
-def generate_ai_report():
-    """
-    为当前用户生成 AI 时间管理分析报告。
-
-    查询参数:
-        model — 模型选择: "deepseek"（默认）或 "gemini"
-
-    响应:
+    返回：
         {
-            "status": "ok",
-            "report": {
-                "content": "AI 分析内容...",
-                "model": "deepseek-chat",
-                "generated_at": "2025-07-05 15:00:00"
-            }
+            "report_id": 1,
+            "model": "deepseek",
+            "content": "## 📊 时间使用概览\n...",
+            "generated_at": "2024-07-05 15:30:00"
         }
     """
-    user_id = _get_current_user_id()
-    if not user_id:
-        return jsonify({'status': 'error', 'message': '请先登录'}), 401
+    model_choice = request.args.get("model", "deepseek")
 
-    model = request.args.get('model', 'deepseek').lower()
-    if model not in ('deepseek', 'gemini'):
-        return jsonify({'status': 'error', 'message': 'model 参数只能为 deepseek 或 gemini'}), 400
+    # 构建分析 prompt
+    prompt = _build_analysis_prompt(g.user_id, g.username)
 
-    # 1. 获取用户数据并构建提示词
-    context = _fetch_user_context(user_id)
-    prompt = _build_analysis_prompt(context)
-
-    # 2. 将请求加入 C 队列（排队管理）
-    queue_item = {
-        'user_id': user_id,
-        'prompt': prompt,
-        'model': model,
-    }
-    enqueue_result = queue_enqueue(queue_item)
-
-    # 3. 立即处理队列（取出并调用 AI）
-    process_result = process_ai_queue()
-
-    # 4. 返回结果
-    if process_result.get('status') != 'ok':
-        return jsonify({'status': 'error', 'message': process_result.get('message', 'AI 处理失败')}), 500
-
-    results = process_result.get('results', [])
-    if not results:
-        return jsonify({'status': 'error', 'message': '未能生成报告'}), 500
-
-    ai_output = results[0]
-
-    if ai_output.get('status') != 'ok':
-        return jsonify({
-            'status': 'error',
-            'message': ai_output.get('message', 'AI 调用失败'),
-        }), 500
-
-    # 5. 保存到数据库
-    conn = get_db()
+    # 根据模型选择不同的生成方式
+    content = ""
     try:
-        conn.execute(
-            "INSERT INTO ai_reports (user_id, report_content, model) VALUES (?, ?, ?)",
-            (user_id, ai_output['content'], ai_output.get('model', model))
-        )
-        conn.commit()
-        report_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        if model_choice == "deepseek" and DEEPSEEK_API_KEY:
+            content = _call_deepseek(prompt)
+        elif model_choice == "gemini" and GEMINI_API_KEY:
+            content = _call_gemini(prompt)
+        elif model_choice == "mock":
+            content = _generate_mock_report(g.username)
+        else:
+            # fallback 到 mock
+            logger.warning(f"Model '{model_choice}' not available, using mock")
+            content = _generate_mock_report(g.username)
+            model_choice = "mock"
     except Exception as e:
-        return jsonify({'status': 'error', 'message': f'保存报告失败: {str(e)}'}), 500
-    finally:
-        conn.close()
+        logger.error(f"AI API call failed: {e}")
+        # 失败时也返回 mock 报告
+        content = _generate_mock_report(g.username)
+        model_choice = "mock"
+
+    # 保存报告到数据库
+    db = get_db()
+    db.execute(
+        "INSERT INTO ai_reports (user_id, report_content, model) VALUES (?, ?, ?)",
+        (g.user_id, content, model_choice)
+    )
+    report_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    # 检测成就（首次使用 AI）
+    from routes.pomodoro_routes import check_and_unlock_achievements
+    new_achievements = check_and_unlock_achievements(g.user_id, db)
+
+    db.commit()
+    db.close()
 
     return jsonify({
-        'status': 'ok',
-        'report': {
-            'id': report_id,
-            'content': ai_output['content'],
-            'model': ai_output.get('model', model),
-            'fallback': ai_output.get('fallback', False),
-            'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        }
+        "report_id": report_id,
+        "model": model_choice,
+        "content": content,
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "new_achievements": new_achievements
     })
 
 
-# ============================================================
-# GET /api/ai/chat-history — AI 对话历史（C 双向链表存储）
-# ============================================================
+@ai_bp.route("/ai/reports", methods=["GET"])
+@login_required
+def get_reports():
+    """获取历史 AI 报告列表"""
+    db = get_db()
+    reports = db.execute(
+        """SELECT id, model, substr(report_content, 1, 200) as preview, created_at
+           FROM ai_reports WHERE user_id = ?
+           ORDER BY created_at DESC LIMIT 20""",
+        (g.user_id,)
+    ).fetchall()
+    db.close()
+    return jsonify({"reports": [dict(r) for r in reports]})
 
-@ai_bp.route('/api/ai/chat-history', methods=['GET'])
+
+@ai_bp.route("/ai/reports/<int:report_id>", methods=["GET"])
+@login_required
+def get_report_detail(report_id: int):
+    """获取单份 AI 报告详情"""
+    db = get_db()
+    report = db.execute(
+        "SELECT * FROM ai_reports WHERE id = ? AND user_id = ?",
+        (report_id, g.user_id)
+    ).fetchone()
+    db.close()
+    if not report:
+        return jsonify({"error": "报告不存在"}), 404
+    return jsonify(dict(report))
+
+
+@ai_bp.route("/ai/chat-history", methods=["GET"])
+@login_required
 def get_chat_history():
     """
-    获取当前用户的 AI 对话历史。
+    获取 AI 对话历史
 
-    查询参数:
-        limit  — 返回条数（默认 20）
-        offset — 偏移量（默认 0）
+    通过 C 模块的双向链表管理对话记录。
+    同时支持从数据库读取（fallback）。
 
-    说明:
-        对话历史在数据库中以 chat_history 表存储（按时间排序即为链表顺序）。
-        前端可以请求 C 模块的 linked_list 来以双向链表结构遍历，
-        也可以用本接口直接分页查询。
-
-    响应:
+    返回：
         {
-            "status": "ok",
-            "total": 50,
             "messages": [
                 {"id": 1, "role": "user", "content": "...", "created_at": "..."},
-                {"id": 2, "role": "assistant", "content": "...", "created_at": "..."},
                 ...
-            ],
-            "linked_list_view": { ... }   // 可选：C 双向链表视角
+            ]
         }
     """
-    user_id = _get_current_user_id()
-    if not user_id:
-        return jsonify({'status': 'error', 'message': '请先登录'}), 401
+    # 优先从 C 模块获取
+    result = call_c_module("linked_list", "to_array")
+    if result.get("status") == "ok" and result.get("result"):
+        c_messages = result["result"]
+        if c_messages and len(c_messages) > 0:
+            return jsonify({"messages": c_messages, "source": "c_module"})
 
-    limit = request.args.get('limit', 20, type=int)
-    offset = request.args.get('offset', 0, type=int)
-    use_linked_list = request.args.get('linked_list', '0') == '1'
-
-    limit = min(max(1, limit), 100)
-    offset = max(0, offset)
-
-    conn = get_db()
-    cursor = conn.cursor()
-
-    try:
-        total = cursor.execute(
-            "SELECT COUNT(*) as cnt FROM chat_history WHERE user_id = ?",
-            (user_id,)
-        ).fetchone()['cnt']
-
-        rows = cursor.execute(
-            "SELECT id, role, content, created_at FROM chat_history "
-            "WHERE user_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?",
-            (user_id, limit, offset)
-        ).fetchall()
-
-        messages = [dict(row) for row in rows]
-
-        response_data = {
-            'status': 'ok',
-            'total': total,
-            'limit': limit,
-            'offset': offset,
-            'messages': messages,
-        }
-
-        # 如果请求链表视图，通过 C 模块获取链表结构
-        if use_linked_list:
-            linked_result = call_c_module('linked_list', {
-                'command': 'to_array',
-                'user_id': user_id,
-            })
-            response_data['linked_list_view'] = linked_result
-
-        return jsonify(response_data)
-
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-    finally:
-        conn.close()
-
-
-# ============================================================
-# POST /api/ai/chat — 发送消息给 AI（对话接口）
-# ============================================================
-
-@ai_bp.route('/api/ai/chat', methods=['POST'])
-def chat_with_ai():
-    """
-    与 AI 对话（用于 AI 报告页面的交互式问答）。
-
-    请求体:
-        {
-            "message": "如何提高我的专注力？",
-            "model": "deepseek"   // 可选，默认 deepseek
-        }
-
-    响应:
-        {
-            "status": "ok",
-            "reply": "AI 回复内容...",
-            "model": "deepseek-chat"
-        }
-    """
-    user_id = _get_current_user_id()
-    if not user_id:
-        return jsonify({'status': 'error', 'message': '请先登录'}), 401
-
-    data = request.get_json(silent=True) or {}
-    user_message = data.get('message', '').strip()
-    model = data.get('model', 'deepseek').lower()
-
-    if not user_message:
-        return jsonify({'status': 'error', 'message': '请提供 message'}), 400
-    if model not in ('deepseek', 'gemini'):
-        return jsonify({'status': 'error', 'message': 'model 参数只能为 deepseek 或 gemini'}), 400
-
-    # 1. 保存用户消息到 chat_history
-    conn = get_db()
-    try:
-        conn.execute(
-            "INSERT INTO chat_history (user_id, role, content) VALUES (?, 'user', ?)",
-            (user_id, user_message)
-        )
-        conn.commit()
-    except Exception as e:
-        pass
-    finally:
-        conn.close()
-
-    # 2. 获取最近的对话上下文（最近 10 条）
-    conn = get_db()
-    cursor = conn.cursor()
-    recent = cursor.execute(
-        "SELECT role, content FROM chat_history WHERE user_id = ? "
-        "ORDER BY created_at DESC LIMIT 10",
-        (user_id,)
+    # fallback：从数据库读取
+    db = get_db()
+    messages = db.execute(
+        """SELECT id, role, content, created_at
+           FROM chat_history WHERE user_id = ?
+           ORDER BY created_at ASC LIMIT 100""",
+        (g.user_id,)
     ).fetchall()
-    conn.close()
-
-    # 构建对话消息列表
-    messages = [
-        {'role': 'system', 'content': '你是一个友好的时间管理助手，帮助用户提升效率、养成好习惯。请用中文回答。'}
-    ]
-    for msg in reversed(recent):
-        messages.append({'role': msg['role'], 'content': msg['content']})
-
-    # 3. 入队 + 调用 AI
-    prompt_for_ai = json.dumps(messages, ensure_ascii=False)
-    queue_item = {
-        'user_id': user_id,
-        'prompt': user_message,
-        'model': model,
-        'context': prompt_for_ai,  # 带上下文的完整提示词
-    }
-    queue_enqueue(queue_item)
-
-    # 直接调用 AI（对话场景不适合排队等待）
-    # 构建完整上下文提示词
-    context_str = '\n'.join(
-        f"{'用户' if m['role'] == 'user' else 'AI'}: {m['content']}"
-        for m in messages
-    )
-    ai_result = call_ai_model(
-        f"以下是对话历史：\n{context_str}\n\n请根据以上对话历史，回答用户最后的问题。保持友好、简洁。",
-        model
-    )
-
-    if ai_result.get('status') != 'ok':
-        return jsonify({
-            'status': 'error',
-            'message': ai_result.get('message', 'AI 调用失败')
-        }), 500
-
-    # 4. 保存 AI 回复
-    conn = get_db()
-    try:
-        conn.execute(
-            "INSERT INTO chat_history (user_id, role, content) VALUES (?, 'assistant', ?)",
-            (user_id, ai_result['content'])
-        )
-        conn.commit()
-    except Exception:
-        pass
-    finally:
-        conn.close()
-
+    db.close()
     return jsonify({
-        'status': 'ok',
-        'reply': ai_result['content'],
-        'model': ai_result.get('model', model),
-        'fallback': ai_result.get('fallback', False),
+        "messages": [dict(m) for m in messages],
+        "source": "database"
     })
 
 
-# ============================================================
-# GET /api/ai/queue-status — 查看队列状态
-# ============================================================
+@ai_bp.route("/ai/chat", methods=["POST"])
+@login_required
+def chat_with_ai():
+    """
+    与 AI 对话（调用 DeepSeek）
 
-@ai_bp.route('/api/ai/queue-status', methods=['GET'])
-def ai_queue_status():
-    """查看当前 AI 请求队列的状态。"""
-    size = queue_size()
-    is_empty = queue_is_empty()
+    请求体 JSON：
+        { "message": "你好，帮我分析一下..." }
 
-    status_data = {
-        'status': 'ok',
-        'queue_size': size,
-        'is_empty': is_empty,
+    返回：
+        { "reply": "...", "message_id": 123 }
+    """
+    data = request.get_json(silent=True) or {}
+    user_message = data.get("message", "").strip()
+
+    if not user_message:
+        return jsonify({"error": "消息不能为空"}), 400
+
+    # 保存用户消息到数据库
+    db = get_db()
+    db.execute(
+        "INSERT INTO chat_history (user_id, role, content) VALUES (?, 'user', ?)",
+        (g.user_id, user_message)
+    )
+
+    # 保存到 C 模块双向链表
+    call_c_module("linked_list", "append", {
+        "role": "user",
+        "content": user_message,
+        "timestamp": int(datetime.now().timestamp())
+    })
+
+    # 构建对话上下文
+    recent = db.execute(
+        """SELECT role, content FROM chat_history
+           WHERE user_id = ? ORDER BY created_at DESC LIMIT 10""",
+        (g.user_id,)
+    ).fetchall()
+
+    messages = [{"role": "system", "content": "你是一位贴心的校园学习助手，名叫「校园达人AI」。请用中文，语气友好、鼓励。"}]
+    for msg in reversed(recent):
+        messages.append({"role": msg["role"], "content": msg["content"]})
+
+    # 调用 AI
+    reply = ""
+    try:
+        if DEEPSEEK_API_KEY:
+            headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
+            payload = {"model": "deepseek-chat", "messages": messages, "temperature": 0.7, "max_tokens": 1024}
+            resp = requests.post(DEEPSEEK_API_URL, headers=headers, json=payload, timeout=30)
+            resp.raise_for_status()
+            reply = resp.json()["choices"][0]["message"]["content"]
+        else:
+            reply = _mock_chat_reply(user_message)
+    except Exception as e:
+        logger.error(f"AI chat failed: {e}")
+        reply = _mock_chat_reply(user_message)
+
+    # 保存 AI 回复
+    db.execute(
+        "INSERT INTO chat_history (user_id, role, content) VALUES (?, 'assistant', ?)",
+        (g.user_id, reply)
+    )
+    message_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    db.commit()
+    db.close()
+
+    # 同步到 C 模块链表
+    call_c_module("linked_list", "append", {
+        "role": "assistant",
+        "content": reply,
+        "timestamp": int(datetime.now().timestamp())
+    })
+
+    return jsonify({
+        "reply": reply,
+        "message_id": message_id
+    })
+
+
+# ==================== Mock 函数（演示用） ====================
+
+def _generate_mock_report(username: str) -> str:
+    """生成示例分析报告（无需 API Key，答辩演示用）"""
+    return f"""## 📊 时间使用概览
+
+{username} 同学，你好！根据你在校园达人上的使用数据，我看到你已经在时间管理方面迈出了重要的一步。
+
+你的时间记录覆盖了多个类别，说明你的日常活动比较多元化。这是一个很好的开始！
+
+---
+
+## 🔍 模式识别
+
+通过分析你的时间使用数据，我发现：
+
+- **学习类活动**占据了主要时间，说明你对学业投入度很高
+- **番茄钟的使用**帮助你保持了专注节奏，这是一个经过科学验证的高效方法
+- **时间记录的习惯**正在逐步养成，坚持下去会看到更清晰的时间画像
+
+---
+
+## 💡 优化建议
+
+1. **设定每日 MVP（最重要任务）**：每天开始前，先确定当天最重要的1-3件事，优先保证它们完成。这比试图完成所有事情要高效得多。
+
+2. **利用碎片时间**：等车、排队、课间等碎片时间加起来可能有1-2小时/天。试试在这些时间处理小任务，比如背单词、复习笔记。
+
+3. **建立「关机仪式」**：每天固定一个时间结束学习，花5分钟回顾今天完成了什么，写下明天的计划。这能帮你更好地「切换模式」并提高睡眠质量。
+
+---
+
+## 🎯 下周目标
+
+- **目标1**：坚持每天至少完成 1 个番茄钟，给自己一个完整的 25 分钟专注时间
+- **目标2**：在时间记录中尝试更细粒度的分类，帮助发现时间黑洞
+- **目标3**：周末花10分钟回顾本周的时间统计报告，找到可以优化的地方
+
+---
+
+## 🌟 鼓励寄语
+
+> "时间是最公平的，每个人每天都只有24小时。但如何使用这些时间，决定了你会成为什么样的人。你已经迈出了管理时间的第一步，坚持下去，你一定会成为更好的自己！💪"
+
+---
+*报告由 校园达人AI 自动生成*
+"""
+
+
+def _mock_chat_reply(user_message: str) -> str:
+    """模拟 AI 对话回复（无需 API Key）"""
+    keywords = {
+        "时间": "时间管理的关键不是做更多事，而是做对的事。试试用「重要-紧急」四象限来区分任务优先级哦！📊",
+        "专注": "提升专注力可以试试「番茄工作法」：25分钟专注 + 5分钟休息。你已经在用校园达人的番茄钟了，坚持下去！🍅",
+        "学习": "学习效率 = 专注度 × 时间。与其低效学习3小时，不如高度专注1小时。记得用番茄钟来量化你的专注时光！📚",
+        "目标": "设定目标时试试 SMART 原则：具体(Specific)、可衡量(Measurable)、可达成(Achievable)、相关(Relevant)、有时限(Time-bound)。🎯",
+        "拖延": "拖延不是懒，往往是任务太大导致的焦虑。试试把大任务拆成小步骤，从最简单的开始，行动是战胜拖延最好的方式！💪",
+        "习惯": "养成一个好习惯需要21天。先定一个小目标，比如每天记录时间连续7天，你就能看到明显的进步！📈",
+        "休息": "好的休息是高效学习的一部分。试试「90分钟周期法则」：专注90分钟后休息15-20分钟。劳逸结合才能持久！😌",
     }
 
-    if not is_empty:
-        peek_result = queue_peek()
-        status_data['next_request'] = peek_result.get('result') if peek_result.get('status') == 'ok' else None
+    for key, reply in keywords.items():
+        if key in user_message:
+            return reply
 
-    return jsonify(status_data)
+    return "你的问题很有价值！作为你的校园学习伙伴，我建议从记录时间开始 — 了解自己的时间都去哪了，是改善的第一步。有什么具体的方面想深入聊的吗？😊"

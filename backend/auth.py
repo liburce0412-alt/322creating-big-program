@@ -24,11 +24,10 @@ def generate_token(user_id: int, username: str) -> str:
                datetime.timedelta(hours=TOKEN_EXPIRE_HOURS),
         "iat": datetime.datetime.now(datetime.timezone.utc)
     }
-    token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
-    return token.decode("utf-8") if isinstance(token, bytes) else token
+    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
 
 
-def verify_token(token: str):
+def verify_token(token: str) -> dict | None:
     """验证 JWT token，返回 payload 或 None"""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
@@ -60,36 +59,24 @@ def login_required(f):
     return decorated
 
 
-def get_user_by_id(user_id: int, db=None):
-    """通过 ID 获取用户信息（db 参数可选，传入则复用连接）"""
-    own_db = db is None
-    if own_db:
+def get_user_by_id(user_id: int) -> dict | None:
+    """通过 ID 获取用户信息"""
+    if db is None:
         db = get_db()
     user = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    if own_db:
-        db.close()
-    if user:
-        return dict(user)
-    return None
-    if own_db:
-        db.close()
+    db.close()
     if user:
         return dict(user)
     return None
 
 
 def add_exp(user_id: int, amount: int, db=None) -> dict:
-    """给用户增加经验值，返回 {level_up: bool, new_level: int, exp: int}
-
-    db 参数可选：传入已有数据库连接时复用，否则自己创建。
-    """
-    own_db = db is None
-    if own_db:
+    """给用户增加经验值，返回 {level_up: bool, new_level: int, exp: int}"""
+    if db is None:
         db = get_db()
     user = db.execute("SELECT level, exp FROM users WHERE id = ?", (user_id,)).fetchone()
     if not user:
-        if own_db:
-            db.close()
+        db.close()
         return {"level_up": False, "new_level": 1, "exp": 0}
 
     level = user["level"]
@@ -106,8 +93,8 @@ def add_exp(user_id: int, amount: int, db=None) -> dict:
         needed = int(LEVEL_UP_BASE * (1.5 ** (level - 1)))
 
     db.execute("UPDATE users SET level = ?, exp = ? WHERE id = ?", (level, exp, user_id))
-    if own_db:
-        db.commit()
+    db.commit()
+    if db is None:
         db.close()
 
     return {

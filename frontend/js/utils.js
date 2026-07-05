@@ -52,6 +52,7 @@ const utils = {
      */
     formatDate(dateStr, withTime = false) {
         if (!dateStr) return '';
+        if (dateStr && !dateStr.endsWith('Z') && !dateStr.includes('+')) dateStr = dateStr.replace(' ', 'T') + 'Z';
         const d = new Date(dateStr);
         const y = d.getFullYear();
         const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -76,6 +77,7 @@ const utils = {
      */
     timeAgo(dateStr) {
         const now = Date.now();
+        if (dateStr && !dateStr.endsWith('Z') && !dateStr.includes('+')) dateStr = dateStr.replace(' ', 'T') + 'Z';
         const then = new Date(dateStr).getTime();
         const diff = Math.floor((now - then) / 1000);
 

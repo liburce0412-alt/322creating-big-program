@@ -210,6 +210,21 @@
                         ✨ 生成分析报告
                     </button>
                 </div>
+            <div class="card" id="api-key-section">
+                <div class="card-header">🔑 API 密钥设置 <span style="font-size:0.8rem;font-weight:normal;color:var(--text-secondary);">（系统已预配，无需手动填写）</span></div>
+                <div style="padding: 12px;">
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <input type="password" id="api-key-input" class="form-input"
+                               placeholder="可选：手动输入 API Key 覆盖系统配置"
+                               style="flex:1; font-family: monospace;">
+                        <button id="btn-save-apikey" class="btn btn-primary btn-sm" onclick="saveApiKey()" style="white-space:nowrap;">💾 保存</button>
+                    </div>
+                    <p class="text-muted" style="font-size: 0.85rem; margin-top: 8px;">
+                        💡 系统已配置 DeepSeek API Key。如需使用自己的 Key，输入后点击「保存」即可覆盖。
+                    </p>
+                </div>
+            </div>
+
                 <div id="generate-status" class="text-center mt-1" style="font-size: var(--fs-sm);"></div>
             </div>
 
@@ -255,12 +270,29 @@
 
 <script src="js/api.js"></script>
 <script src="js/auth.js"></script>
-<script src="js/utils.js"></script>
+<script src="js/utils.js?v=2"></script>
 <script>
 var selectedModel = 'mock';
 
 // ==================== 初始化 ====================
 
+// API Key 本地保存
+function saveApiKey() {
+    var key = document.getElementById('api-key-input').value.trim();
+    if (key) {
+        localStorage.setItem('campus_api_key', key);
+        utils.toast('API Key 已保存', 'success');
+    } else {
+        localStorage.removeItem('campus_api_key');
+        utils.toast('已清除保存的 API Key', 'info');
+    }
+}
+function loadSavedApiKey() {
+    var saved = localStorage.getItem('campus_api_key');
+    if (saved) {
+        document.getElementById('api-key-input').value = saved;
+    }
+}
 async function init() {
     if (!auth.requireLogin()) return;
     await auth.renderNavbar();
@@ -272,16 +304,37 @@ async function loadModels() {
     try {
         var data = await api.getAiModels();
         var container = document.getElementById('model-list');
-        container.innerHTML = data.models.map(function(m) {
+    container.innerHTML = data.models.map(function(m) {
+            var isAvailable = m.available !== false;
+            var badge = '';
+            if (isAvailable && m.id !== 'mock') {
+                badge = '<span class="unavailable-badge" style="background:#22c55e;color:white;">已配置</span>';
+            } else if (m.id !== 'mock') {
+                badge = '<span class="unavailable-badge">未配置</span>';
+            }
             return '<div class="model-card' + (m.id === selectedModel ? ' selected' : '') + '"' +
                  ' onclick="selectModel(\'' + m.id + '\', this)"' +
                  ' id="model-' + m.id + '">' +
-                (m.available === false && m.id !== 'mock' ? '<span class="unavailable-badge">未配置</span>' : '') +
+                badge +
                 '<span class="model-icon">' + m.icon + '</span>' +
                 '<div class="model-name">' + m.name + '</div>' +
                 '<div class="model-desc">' + m.description + '</div>' +
             '</div>';
         }).join('');
+        // 如果服务器已配置 API Key，隐藏手动输入区域
+        var hasServerKey = data.models.some(function(m) { return m.available === true; });
+        var apiKeySection = document.getElementById('api-key-section');
+        if (apiKeySection) {
+            apiKeySection.style.display = 'block';
+        }
+        loadSavedApiKey();
+        // 有可用模型时默认选第一个可用模型
+        var firstAvailable = data.models.find(function(m) { return m.available === true || m.id === 'mock'; });
+        if (firstAvailable && selectedModel === 'mock') {
+            selectedModel = firstAvailable.id;
+            var firstCard = container.querySelector('.model-card');
+            if (firstCard) firstCard.classList.add('selected');
+        }
     } catch (e) {
         console.error('加载模型列表失败:', e);
     }
@@ -308,7 +361,8 @@ async function generateReport() {
     status.innerHTML = '';
 
     try {
-        var data = await api.generateReport(selectedModel);
+        var apiKey = document.getElementById('api-key-input')?.value.trim() || localStorage.getItem('campus_api_key') || '';
+        var data = await api.generateReport(selectedModel, apiKey);
         reportEl.innerHTML = data.content;
 
         if (data.new_achievements && data.new_achievements.length > 0) {
@@ -386,7 +440,8 @@ async function sendMessage() {
     chatBox.scrollTop = chatBox.scrollHeight;
 
     try {
-        var data = await api.sendChatMessage(message);
+        var apiKey = document.getElementById('api-key-input')?.value.trim() || localStorage.getItem('campus_api_key') || '';
+        var data = await api.sendChatMessage(message, apiKey);
         var loadingEl = document.getElementById(loadingId);
         if (loadingEl) loadingEl.remove();
         chatBox.innerHTML +=
