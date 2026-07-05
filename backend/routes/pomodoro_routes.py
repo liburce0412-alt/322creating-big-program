@@ -46,6 +46,87 @@ def _get_current_user_id():
 # POST /api/pomodoro/complete — 完成番茄钟
 # ============================================================
 
+
+
+
+# ---- 辅助函数（由 achievement_routes 和 time_routes 调用）----
+
+def check_and_unlock_achievements(user_id: int, db) -> list:
+    """检查并解锁新成就，返回本次新解锁的成就列表"""
+    newly_unlocked = []
+    from config import BADGES
+
+    pomo_count = db.execute(
+        "SELECT COUNT(*) as cnt FROM pomodoro_sessions WHERE user_id = ?",
+        (user_id,)
+    ).fetchone()["cnt"]
+
+    record_count = db.execute(
+        "SELECT COUNT(*) as cnt FROM time_records WHERE user_id = ?",
+        (user_id,)
+    ).fetchone()["cnt"]
+
+    level_row = db.execute(
+        "SELECT level FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    level = level_row["level"] if level_row else 1
+
+    achievements_to_check = {
+        "first_pomodoro": pomo_count >= 1,
+        "ten_pomodoros": pomo_count >= 10,
+        "fifty_pomodoros": pomo_count >= 50,
+        "first_record": record_count >= 1,
+        "ten_records": record_count >= 10,
+    }
+    # Level-based achievements
+    if level >= 5:  achievements_to_check["level_5"] = True
+    if level >= 10: achievements_to_check["level_10"] = True
+    # Streak achievements (check streak first)
+    if _calculate_streak(user_id, db) >= 3:  achievements_to_check["three_day_streak"] = True
+    if _calculate_streak(user_id, db) >= 7:  achievements_to_check["seven_day_streak"] = True
+
+    for badge_id, unlocked in achievements_to_check.items():
+        if unlocked and badge_id in BADGES:
+            existing = db.execute(
+                "SELECT id FROM achievements WHERE user_id = ? AND badge_id = ?",
+                (user_id, badge_id)
+            ).fetchone()
+            if not existing:
+                db.execute(
+                    "INSERT INTO achievements (user_id, badge_id) VALUES (?, ?)",
+                    (user_id, badge_id)
+                )
+                from config import BADGES as B
+                badge_info = B.get(badge_id, {"name": badge_id, "icon": "\U0001f3c6"})
+                newly_unlocked.append({
+                    "badge_id": badge_id,
+                    "name": badge_info["name"],
+                    "icon": badge_info["icon"],
+                    "description": badge_info.get("description", "")
+                })
+
+    return newly_unlocked
+
+
+def _calculate_streak(user_id: int, db) -> int:
+    """计算连续使用天数（从今天往回数）"""
+    from datetime import datetime, timedelta
+    today = datetime.now().strftime("%Y-%m-%d")
+    streak = 0
+    for i in range(365):
+        day = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
+        row = db.execute(
+            "SELECT COUNT(*) as cnt FROM pomodoro_sessions WHERE user_id = ? AND date(completed_at) = ?",
+            (user_id, day)
+        ).fetchone()
+        cnt = row["cnt"] if row else 0
+        if cnt > 0:
+            streak += 1
+        else:
+            break
+    return streak
+
+
 @pomodoro_bp.route('/api/pomodoro/complete', methods=['POST'])
 def complete_pomodoro():
     """
