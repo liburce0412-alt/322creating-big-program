@@ -3,36 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>时间记录 - campus3ai</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>校园达人 · 时间记录</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="records.css">
 </head>
 <body>
-    <div class="app-container">
-        <aside class="sidebar">
-            <div class="sidebar-logo"><span class="icon">🎓</span> campus3ai</div>
-            <ul class="sidebar-nav">
-                <li><a href="dashboard.html"><span class="nav-icon">📊</span> 首页</a></li>
-                <li><a href="pomodoro.html"><span class="nav-icon">🍅</span> 番茄钟</a></li>
-                <li><a href="records.html" class="active"><span class="nav-icon">📋</span> 时间记录</a></li>
-                <li><a href="stats.html"><span class="nav-icon">📈</span> 统计</a></li>
-                <li><a href="ai-report.html"><span class="nav-icon">🤖</span> AI 分析</a></li>
-                <li><a href="achievements.html"><span class="nav-icon">🏆</span> 成就</a></li>
-            </ul>
-            <div class="sidebar-footer">
-                <div class="sidebar-user" id="current-user">未登录</div>
-                <a href="#" id="btn-logout">退出登录</a>
+    <nav class="navbar">
+        <a href="dashboard.html" class="logo">📚 校园达人</a>
+        <div class="nav-links">
+            <a href="dashboard.html">首页</a>
+            <a href="records.html" class="active">时间记录</a>
+            <a href="stats.html">统计</a>
+            <a href="pomodoro.html">番茄钟</a>
+            <a href="ai-report.html">AI报告</a>
+            <a href="achievements.html">成就</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="card panel">
+            <h2>✍️ 记录时间</h2>
+            <div id="alertBox" class="alert"></div>
+            <form id="recordForm">
+                <div class="form-group">
+                    <label>类别</label>
+                    <select id="category" required>
+                        <option value="">请选择</option>
+                        <option value="学习">学习</option>
+                        <option value="运动">运动</option>
+                        <option value="娱乐">娱乐</option>
+                        <option value="其他">其他</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>描述</label>
+                    <input type="text" id="description" placeholder="做了什么..." required>
+                </div>
+                <div class="form-group">
+                    <label>时长（分钟）</label>
+                    <input type="number" id="duration" placeholder="分钟" min="1" required>
+                </div>
+                <button type="submit" class="btn"><i class="fas fa-plus-circle"></i> 添加记录</button>
+            </form>
+            <div class="undo-redo">
+                <button class="btn btn-secondary btn-sm" id="undoBtn"><i class="fas fa-undo"></i> 撤销</button>
+                <button class="btn btn-secondary btn-sm" id="redoBtn"><i class="fas fa-redo"></i> 重做</button>
             </div>
-        </aside>
-        <main class="main-content">
-            <div class="page-header"><h1>📋 时间记录</h1><p>记录和管理你的学习时间</p></div>
-            <!-- TODO: 李恩琪 + 余欣泽 完善时间记录页面 -->
-            <div class="card">
-                <p class="text-muted">时间记录功能页面 —— 待李恩琪 + 余欣泽完善</p>
+        </div>
+
+        <div>
+            <div class="records-header">
+                <h2>📋 时间记录</h2>
+                <div class="filter-tabs" id="filterTabs">
+                    <span class="filter-tab active" data-category="">全部</span>
+                    <span class="filter-tab" data-category="学习">学习</span>
+                    <span class="filter-tab" data-category="运动">运动</span>
+                    <span class="filter-tab" data-category="娱乐">娱乐</span>
+                    <span class="filter-tab" data-category="其他">其他</span>
+                </div>
+                <div class="search-box">
+                    <input type="text" id="searchInput" placeholder="搜索关键词...">
+                    <button class="btn btn-secondary btn-sm" id="searchBtn"><i class="fas fa-search"></i></button>
+                </div>
             </div>
-        </main>
+            <div class="record-list" id="recordList">
+                <div class="empty-state">
+                    <i class="fas fa-clock" style="font-size:48px;opacity:0.3;"></i>
+                    <p style="margin-top:12px;">暂无记录，快去添加吧</p>
+                </div>
+            </div>
+        </div>
     </div>
-    <script src="js/api.js"></script>
-    <script src="js/utils.js"></script>
-    <script src="js/auth.js"></script>
+
+    <script src="utils.js"></script>
+    <script src="records.js"></script>
 </body>
 </html>

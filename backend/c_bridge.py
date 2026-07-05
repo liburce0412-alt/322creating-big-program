@@ -191,12 +191,54 @@ def _linked_list_fallback(action: str, data: dict) -> dict:
             "role": data.get("role", "user"),
             "content": data.get("content", ""),
             "timestamp": data.get("timestamp", 0)
-=======
-        return {
-            'status': 'error',
-            'message': f'调用 C 模块时发生异常: {str(e)}'
->>>>>>> origin/dcyupdate
+            "timestamp": data.get("timestamp", 0)
         }
+        _fb_linked_list.append(node)
+        return {"status": "ok", "result": {"id": node["id"], "size": len(_fb_linked_list)}}
+
+    if action == "prepend":
+        node = {
+            "id": len(_fb_linked_list) + 1,
+            "role": data.get("role", "user"),
+            "content": data.get("content", ""),
+            "timestamp": data.get("timestamp", 0)
+        }
+        _fb_linked_list.insert(0, node)
+        return {"status": "ok", "result": {"id": node["id"], "size": len(_fb_linked_list)}}
+
+    if action == "delete":
+        target_id = data.get("id", -1)
+        for i, n in enumerate(_fb_linked_list):
+            if n["id"] == target_id:
+                del _fb_linked_list[i]
+                return {"status": "ok", "result": {"deleted": True, "id": target_id}}
+        return {"status": "ok", "result": {"deleted": False, "id": target_id}}
+
+    if action == "find":
+        target_id = data.get("id", -1)
+        for n in _fb_linked_list:
+            if n["id"] == target_id:
+                return {"status": "ok", "result": {"found": True, **n}}
+        return {"status": "ok", "result": {"found": False}}
+
+    if action == "to_array":
+        return {"status": "ok", "result": list(_fb_linked_list)}
+
+    if action == "from_array":
+        items = data if isinstance(data, list) else data.get("messages", [])
+        _fb_linked_list = list(items)
+        return {"status": "ok", "result": {"imported": len(_fb_linked_list)}}
+
+    if action == "clear":
+        _fb_linked_list.clear()
+        return {"status": "ok", "result": {"cleared": True}}
+
+    if action == "size":
+        return {"status": "ok", "result": {"size": len(_fb_linked_list)}}
+
+    return {"status": "error", "error": f"Unknown linked_list action: {action}"}
+
+
 
 
 # ============================================================
