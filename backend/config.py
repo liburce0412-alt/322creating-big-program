@@ -8,6 +8,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASE_PATH = os.path.join(os.path.dirname(BASE_DIR), 'campus_ai.db')
 
 # Flask 密钥（JWT 签名用）
+TOKEN_EXPIRE_HOURS = 72
 SECRET_KEY = 'campus-ai-secret-key-change-in-production'
 
 # C 模块路径
