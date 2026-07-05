@@ -1,0 +1,165 @@
+/* 布局容器 */
+.container {
+    display: grid;
+    grid-template-columns: 1fr;  /* 手机默认单列 */
+    gap: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+@media (min-width: 768px) {
+    .container {
+        grid-template-columns: 350px 1fr; /* 平板/桌面恢复双栏 */
+        gap: 24px;
+    }
+}
+
+/* 左侧面板 */
+.panel {
+    height: fit-content;
+}
+
+/* 表单组 */
+.form-group {
+    margin-bottom: 18px;
+}
+.form-group label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-light);
+    margin-bottom: 6px;
+}
+
+/* ====== 记录头部（手机改为纵向排列，稳定且兼容） ====== */
+.records-header {
+    display: flex;
+    flex-direction: column;    /* 纵向：标题 → 筛选 → 搜索 */
+    align-items: stretch;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.records-header h2 {
+    font-size: 20px;
+    margin: 0;
+}
+
+/* 筛选标签 */
+.filter-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.filter-tab {
+    padding: 8px 16px;         /* 加大内边距 */
+    min-height: 44px;          /* 手指友好点击区域 */
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(91, 141, 239, 0.2);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: 0.2s;
+    color: var(--text-light);
+    touch-action: manipulation;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.filter-tab.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+/* ====== 搜索框（手机全宽且不溢出） ====== */
+.search-box {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+.search-box input {
+    flex: 1;                  /* 自动撑满剩余宽度，代替 width:100% */
+    min-width: 0;             /* 防止溢出 */
+    padding: 10px 14px;
+}
+.search-box .btn {
+    flex: 0 0 auto;           /* 按钮固定宽度，不被压缩 */
+}
+
+/* 记录列表 */
+.record-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* 记录卡片（手机优化） */
+.record-card {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    transition: 0.2s;
+    gap: 8px;
+}
+.record-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+.record-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    flex-wrap: wrap;
+}
+
+/* 类别标签 */
+.category-badge {
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #eef2ff;
+    color: var(--primary);
+    white-space: nowrap;
+}
+.category-badge.学习 { background: #d4f0ff; color: #0984e3; }
+.category-badge.运动 { background: #d4ffe4; color: #00b894; }
+.category-badge.娱乐 { background: #ffeaa7; color: #d63031; }
+.category-badge.其他 { background: #dfe6e9; color: #636e72; }
+
+.record-desc {
+    font-weight: 500;
+    color: var(--text);
+    word-break: break-word;
+}
+.record-time {
+    font-size: 13px;
+    color: var(--text-light);
+    white-space: nowrap;
+}
+
+.record-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+/* 空状态 */
+.empty-state {
+    text-align: center;
+    padding: 40px;
+    color: #95a5a6;
+}
+
+/* 撤销/重做按钮组 */
+.undo-redo {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}

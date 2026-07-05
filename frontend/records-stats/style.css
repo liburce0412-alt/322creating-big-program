@@ -1,0 +1,180 @@
+:root {
+    --primary: #5b8def;
+    --primary-dark: #4a6fcf;
+    --text: #2c3e50;
+    --text-light: #5a6c7d;
+    --card-bg: rgba(255, 255, 255, 0.8);
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+    --border: rgba(255, 255, 255, 0.6);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: linear-gradient(135deg, #e8f0fe 0%, #f0e6ff 100%);
+    min-height: 100vh;
+    padding: 16px; /* 手机上减小内边距 */
+    color: var(--text);
+}
+
+/* ========== 导航栏（完美适配手机：可滑动、不换行） ========== */
+.navbar {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 20px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+    flex-wrap: nowrap; /* 禁止换行 */
+    gap: 12px;
+}
+.navbar .logo {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--primary);
+    text-decoration: none;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* 导航链接容器 —— 支持横向滑动，完美解决手机拥挤问题 */
+.navbar .nav-links {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;          /* 允许横向滑动 */
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;     /* Firefox 隐藏滚动条 */
+    padding: 4px 0;
+    flex: 1;                   /* 占据剩余空间 */
+}
+.navbar .nav-links::-webkit-scrollbar {
+    display: none;             /* Chrome/Safari 隐藏滚动条 */
+}
+
+/* 导航链接最右侧渐变淡出，提示可滑动（手机端视觉提示） */
+.navbar .nav-links::after {
+    content: '';
+    position: sticky;
+    right: 0;
+    width: 30px;
+    height: 100%;
+    background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.9));
+    pointer-events: none;      /* 点击穿透 */
+    flex-shrink: 0;
+}
+
+.navbar .nav-links a {
+    padding: 8px 14px;         /* 增大手指触控面积 */
+    text-decoration: none;
+    color: var(--text-light);
+    font-weight: 500;
+    font-size: 14px;
+    border-radius: 30px;
+    transition: all 0.2s;
+    flex-shrink: 0;            /* 防止文字被压缩 */
+}
+.navbar .nav-links a:hover,
+.navbar .nav-links a.active {
+    color: var(--primary);
+    background: rgba(91, 141, 239, 0.1);
+    font-weight: 600;
+}
+
+/* ========== 卡片容器 ========== */
+.card {
+    background: var(--card-bg);
+    backdrop-filter: blur(20px);
+    border-radius: 24px;
+    padding: 20px; /* 手机减小内边距 */
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+}
+
+/* ========== 通用按钮（手机触摸优化） ========== */
+.btn {
+    padding: 12px 24px;
+    background: linear-gradient(135deg, #5b8def, #7c6ff7);
+    color: white;
+    border: none;
+    border-radius: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 15px;
+    min-height: 48px;          /* 保证手机上好点击 */
+    touch-action: manipulation;
+}
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(91, 141, 239, 0.3);
+}
+.btn-secondary {
+    background: #f0f2f5;
+    color: var(--text);
+    border: 1px solid #ddd;
+}
+.btn-secondary:hover {
+    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+}
+.btn-sm {
+    padding: 8px 16px;
+    font-size: 14px;
+    min-height: 44px;          /* 苹果推荐最小点击区域 */
+}
+.btn-danger {
+    background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+}
+
+/* ========== 输入框 ========== */
+input, select {
+    width: 100%;
+    padding: 14px 16px;        /* 加大输入框高度，方便手指 */
+    border: 2px solid rgba(91, 141, 239, 0.15);
+    border-radius: 14px;
+    font-size: 16px;           /* iOS 防止自动缩放 */
+    background: rgba(255, 255, 255, 0.7);
+    transition: 0.3s;
+    outline: none;
+    font-family: inherit;
+    -webkit-appearance: none;  /* 去除 iOS 默认样式 */
+}
+input:focus, select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(91, 141, 239, 0.12);
+    background: white;
+}
+
+/* ========== 消息提示 ========== */
+.alert {
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 13px;
+    margin: 12px 0;
+    display: none;
+    align-items: center;
+    gap: 6px;
+}
+.alert-error {
+    background: #ffeaea;
+    color: #c0392b;
+    display: flex;
+}
+.alert-success {
+    background: #eafaf1;
+    color: #27ae60;
+    display: flex;
+}
