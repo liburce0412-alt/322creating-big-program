@@ -167,6 +167,28 @@ def delete_account():
     return jsonify({"message": "账号已注销"})
 
 
+
+@auth_bp.route("/users/lookup", methods=["GET"])
+@login_required
+def user_lookup():
+    """快速查找用户（使用哈希表 C 模块缓存）"""
+    keyword = (request.args.get("q") or "").strip()
+    if not keyword:
+        return jsonify({"error": "搜索关键词不能为空"}), 400
+    from c_bridge import call_c_module
+    db = get_db()
+    users = db.execute(
+        "SELECT id, username, level FROM users WHERE username LIKE ?",
+        (f"%{keyword}%",)
+    ).fetchall()
+    db.close()
+    call_c_module("hash_table", "insert", {
+        "key": f"search:{keyword}",
+        "value": {"results": [dict(u) for u in users], "count": len(users)}
+    })
+    return jsonify({"keyword": keyword, "results": [dict(u) for u in users], "count": len(users)})
+
+
 @auth_bp.route("/users/<int:user_id>", methods=["GET"])
 @login_required
 def get_user_profile(user_id):

@@ -46,6 +46,15 @@ def add_time_record():
     )
     db.commit()
     record_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    # 推入撤销栈
+    from c_bridge import call_c_module
+    call_c_module("stack", "push", {
+        "id": record_id,
+        "category": category,
+        "description": description,
+        "duration_min": duration_min
+    })
+
 
     # 添加经验（传入 db 避免多连接冲突）
     from auth import add_exp
@@ -189,29 +198,52 @@ def get_time_stats():
 @time_bp.route("/time-records/undo", methods=["POST"])
 @login_required
 def undo_record():
-    """
-    撤销最近的时间记录（使用 C 模块栈管理）
-    👤 李恩琪+余欣泽：对接 C 模块 stack
-    """
+    """撤销最近的时间记录（使用 C 模块栈管理）"""
     from c_bridge import call_c_module
     result = call_c_module("stack", "pop")
-    if result.get("status") == "ok":
-        return jsonify({"message": "撤销成功", "record": result.get("result")})
-    return jsonify({"error": "没有可撤销的记录"}), 400
+    if result.get("status") != "ok":
+        return jsonify({"error": "撤销模块异常"}), 500
+    r = result.get("result", {})
+    if r.get("empty"):
+        return jsonify({"error": "没有可撤销的记录"}), 400
+    record_data = r.get("item") or r.get("record", {})
+    record_id = record_data.get("id")
+    if not record_id:
+        return jsonify({"error": "撤销失败：记录数据无效"}), 400
+    db = get_db()
+    rec = db.execute("SELECT id FROM time_records WHERE id = ? AND user_id = ?", (record_id, g.user_id)).fetchone()
+    if not rec:
+        db.close()
+        return jsonify({"error": "记录不存在"}), 404
+    db.execute("DELETE FROM time_records WHERE id = ?", (record_id,))
+    db.commit()
+    db.close()
+    return jsonify({"message": "撤销成功", "record": record_data, "undo_size": r.get("undo_size", 0), "redo_size": r.get("redo_size", 0)})
 
 
 @time_bp.route("/time-records/redo", methods=["POST"])
 @login_required
 def redo_record():
-    """
-    重做刚才撤销的记录
-    👤 李恩琪+余欣泽：对接 C 模块 stack
-    """
+    """重做刚才撤销的记录（从重做栈恢复）"""
     from c_bridge import call_c_module
     result = call_c_module("stack", "redo_pop")
-    if result.get("status") == "ok":
-        return jsonify({"message": "重做成功", "record": result.get("result")})
-    return jsonify({"error": "没有可重做的记录"}), 400
+    if result.get("status") != "ok":
+        return jsonify({"error": "重做模块异常"}), 500
+    r = result.get("result", {})
+    if r.get("empty"):
+        return jsonify({"error": "没有可重做的记录"}), 400
+    record_data = r.get("item") or r.get("record", {})
+    category = str(record_data.get("category", "")).strip()
+    description = str(record_data.get("description", "")).strip()
+    duration_min = record_data.get("duration_min", 0)
+    if not category or not duration_min:
+        return jsonify({"error": "重做失败：记录数据无效"}), 400
+    db = get_db()
+    db.execute("INSERT INTO time_records (user_id, category, description, duration_min) VALUES (?, ?, ?, ?)", (g.user_id, category, description, duration_min))
+    new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    db.commit()
+    db.close()
+    return jsonify({"message": "重做成功", "record": {"id": new_id, "category": category, "description": description, "duration_min": duration_min}, "undo_size": r.get("undo_size", 0), "redo_size": r.get("redo_size", 0)})
 
 
 @time_bp.route("/time-records/<int:record_id>", methods=["GET"])
