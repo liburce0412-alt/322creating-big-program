@@ -1,140 +1,92 @@
-"""
-pomodoro_routes.py —— 番茄钟 API
-谢佳杨 负责
+# pomodoro_routes.py — 番茄钟 API 路由
+# 负责：POST /api/pomodoro/complete（核心：加经验值 + 解锁勋章）
+#       GET  /api/pomodoro/history（历史记录）
 
-接口：
-  POST /api/pomodoro/complete  — 完成一次番茄钟（加经验 + 触发成就检测）
-  GET  /api/pomodoro/history   — 获取番茄钟历史记录
-  GET  /api/pomodoro/stats     — 番茄钟统计数据
-"""
 from flask import Blueprint, request, jsonify, g
-from auth import login_required, add_exp
-from models import get_db
-from config import EXP_PER_POMODORO, BADGES
-from datetime import datetime, timedelta
+from datetime import datetime
 
-pomodoro_bp = Blueprint("pomodoro", __name__)
+from models import (
+    get_db, calculate_exp, calculate_level,
+    check_achievements, get_user_pomodoro_count,
+    get_user_achievements, ACHIEVEMENT_DEFINITIONS
+)
+
+pomodoro_bp = Blueprint('pomodoro', __name__)
 
 
-def check_and_unlock_achievements(user_id: int, db) -> list:
+# ============================================================
+# 辅助：从请求中获取当前用户（依赖 auth.py 的 JWT 中间件设置 g.user_id）
+# ============================================================
+
+def _get_current_user_id():
     """
-    检查并解锁新成就，返回本次新解锁的成就列表。
-    在每次番茄钟完成、时间记录添加等操作后调用。
+    获取当前登录用户的 ID。
+    依赖 auth.py 中的 @login_required 装饰器在 g.user_id 中设置。
+    如果 auth 模块尚未实现，则从 Authorization header 手动解析。
     """
-    newly_unlocked = []
+    # 优先从 Flask g 对象获取（auth 中间件设置的）
+    if hasattr(g, 'user_id') and g.user_id:
+        return g.user_id
 
-    # 统计用户各项数据
-    pomo_count = db.execute(
-        "SELECT COUNT(*) as cnt FROM pomodoro_sessions WHERE user_id = ?",
-        (user_id,)
-    ).fetchone()["cnt"]
-
-    record_count = db.execute(
-        "SELECT COUNT(*) as cnt FROM time_records WHERE user_id = ?",
-        (user_id,)
-    ).fetchone()["cnt"]
-
-    user = db.execute("SELECT level FROM users WHERE id = ?", (user_id,)).fetchone()
-    current_level = user["level"] if user else 1
-
-    ai_report_count = db.execute(
-        "SELECT COUNT(*) as cnt FROM ai_reports WHERE user_id = ?",
-        (user_id,)
-    ).fetchone()["cnt"]
-
-    # 检查连续打卡天数
-    streak = _calculate_streak(user_id, db)
-
-    # 成就检测规则
-    rules = {
-        "first_pomodoro": pomo_count >= 1,
-        "ten_pomodoros": pomo_count >= 10,
-        "fifty_pomodoros": pomo_count >= 50,
-        "first_record": record_count >= 1,
-        "ten_records": record_count >= 10,
-        "level_5": current_level >= 5,
-        "level_10": current_level >= 10,
-        "ai_first": ai_report_count >= 1,
-        "three_day_streak": streak >= 3,
-        "seven_day_streak": streak >= 7,
-    }
-
-    for badge_id, condition in rules.items():
-        if not condition:
-            continue
-        # 检查是否已解锁
-        existing = db.execute(
-            "SELECT id FROM achievements WHERE user_id = ? AND badge_id = ?",
-            (user_id, badge_id)
-        ).fetchone()
-        if existing:
-            continue
-        # 解锁新成就！
-        db.execute(
-            "INSERT INTO achievements (user_id, badge_id) VALUES (?, ?)",
-            (user_id, badge_id)
-        )
-        badge_info = BADGES.get(badge_id, {"name": badge_id, "icon": "🎖️", "description": ""})
-        newly_unlocked.append({
-            "badge_id": badge_id,
-            "name": badge_info["name"],
-            "icon": badge_info["icon"],
-            "description": badge_info["description"]
-        })
-
-    if newly_unlocked:
-        db.commit()
-    return newly_unlocked
+    # 退化：直接从 header 解析 JWT payload（临时方案）
+    import jwt
+    import config
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        token = auth_header[7:]
+        try:
+            payload = jwt.decode(token, config.SECRET_KEY, algorithms=['HS256'])
+            return payload.get('user_id')
+        except Exception:
+            return None
+    return None
 
 
-def _calculate_streak(user_id: int, db) -> int:
-    """计算连续使用天数（从今天往回数）"""
-    today = datetime.now().strftime("%Y-%m-%d")
-    streak = 0
-    for i in range(365):  # 最多回溯一年
-        day = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
-        has_activity = db.execute(
-            """SELECT COUNT(*) as cnt FROM pomodoro_sessions
-               WHERE user_id = ? AND date(completed_at) = ?""",
-            (user_id, day)
-        ).fetchone()["cnt"]
-        if has_activity > 0:
-            streak += 1
-        elif i > 0:  # 今天可以没有记录，但从昨天开始必须连续
-            break
-        # i == 0 (今天) 没有记录不打断 streak 的计算起点
-    return streak
+# ============================================================
+# POST /api/pomodoro/complete — 完成番茄钟
+# ============================================================
 
-
-# ==================== API 接口 ====================
-
-@pomodoro_bp.route("/pomodoro/complete", methods=["POST"])
-@login_required
+@pomodoro_bp.route('/api/pomodoro/complete', methods=['POST'])
 def complete_pomodoro():
     """
-    完成一次番茄钟
+    完成一个番茄钟，记录并发放经验和成就。
 
-    请求体 JSON：
-        { "duration_min": 25 }
-
-    返回：
+    请求体 (JSON):
         {
-            "session_id": 123,
-            "exp_gained": 50,
+            "duration_min": 25   // 番茄钟时长（分钟）
+        }
+
+    响应 (JSON):
+        {
+            "status": "ok",
+            "session_id": 1,
+            "exp_gained": 25,
+            "total_exp": 125,
             "level_up": false,
-            "new_level": 3,
-            "new_exp": 100,
-            "new_achievements": [...]
+            "current_level": 2,
+            "exp_to_next": 275,
+            "new_achievements": [
+                {
+                    "badge_id": "first_pomodoro",
+                    "name": "初次专注",
+                    "description": "完成第1次番茄钟",
+                    "icon": "🍅"
+                }
+            ]
         }
     """
+    user_id = _get_current_user_id()
+    if not user_id:
+        return jsonify({'status': 'error', 'message': '请先登录'}), 401
+
     data = request.get_json(silent=True) or {}
-    duration = data.get("duration_min", 25)
+    duration_min = data.get('duration_min', 0)
 
-    # 验证时长
-    if duration not in [25, 50, 90]:
-        return jsonify({"error": "无效的番茄钟时长，支持 25/50/90 分钟"}), 400
+    # 参数校验
+    if not isinstance(duration_min, (int, float)) or duration_min <= 0:
+        return jsonify({'status': 'error', 'message': '请提供有效的 duration_min（分钟数）'}), 400
 
-    db = get_db()
+    duration_min = int(duration_min)
 
     # 记录番茄钟会话
     db.execute(
@@ -144,133 +96,193 @@ def complete_pomodoro():
     session_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
     db.commit()
 
-    # 加经验值
-    exp_result = add_exp(g.user_id, EXP_PER_POMODORO)
+    try:
+        # 1. 计算本次番茄钟获得的经验值
+        exp_gained = calculate_exp(duration_min)
 
-    # 检测成就
-    new_achievements = check_and_unlock_achievements(g.user_id, db)
+        # 2. 写入 pomodoro_sessions 表
+        cursor.execute(
+            "INSERT INTO pomodoro_sessions (user_id, duration_min, exp_gained) VALUES (?, ?, ?)",
+            (user_id, duration_min, exp_gained)
+        )
+        session_id = cursor.lastrowid
 
-    db.commit()
-    db.close()
+        # 3. 更新用户经验值
+        cursor.execute("UPDATE users SET exp = exp + ? WHERE id = ?", (exp_gained, user_id))
 
-    return jsonify({
-        "session_id": session_id,
-        "duration_min": duration,
-        "exp_gained": EXP_PER_POMODORO,
-        "level_up": exp_result["level_up"],
-        "new_level": exp_result["new_level"],
-        "new_exp": exp_result["exp"],
-        "new_achievements": new_achievements
-    }), 201
+        # 4. 重新计算等级
+        user = cursor.execute("SELECT exp, level FROM users WHERE id = ?", (user_id,)).fetchone()
+        old_level = user['level']
+        new_level = calculate_level(user['exp'])
+
+        level_up = new_level > old_level
+        if level_up:
+            cursor.execute("UPDATE users SET level = ? WHERE id = ?", (new_level, user_id))
+
+        conn.commit()
+
+        # 5. 检查并解锁新成就
+        new_achievements = check_achievements(user_id, conn)
+
+        # 6. 重新读取用户最终状态
+        user = cursor.execute("SELECT exp, level FROM users WHERE id = ?", (user_id,)).fetchone()
+        exp_to_next = (user['level']) * (user['level']) * 100 - user['exp']
+
+        return jsonify({
+            'status': 'ok',
+            'session_id': session_id,
+            'exp_gained': exp_gained,
+            'total_exp': user['exp'],
+            'level_up': level_up,
+            'current_level': user['level'],
+            'exp_to_next': max(0, exp_to_next),
+            'new_achievements': new_achievements,
+        }), 201
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'status': 'error', 'message': f'服务器错误: {str(e)}'}), 500
+    finally:
+        conn.close()
 
 
-@pomodoro_bp.route("/pomodoro/history", methods=["GET"])
-@login_required
-def get_pomodoro_history():
+# ============================================================
+# GET /api/pomodoro/history — 番茄钟历史
+# ============================================================
+
+@pomodoro_bp.route('/api/pomodoro/history', methods=['GET'])
+def pomodoro_history():
     """
-    获取番茄钟历史记录
+    获取当前用户的番茄钟历史记录。
 
-    查询参数：
-        ?page=1&limit=20
+    查询参数:
+        limit  — 返回条数（默认 20）
+        offset — 偏移量（默认 0）
 
-    返回：
+    响应:
         {
-            "total": 50,
-            "page": 1,
-            "sessions": [...]
+            "status": "ok",
+            "total": 42,
+            "sessions": [
+                {
+                    "id": 1,
+                    "duration_min": 25,
+                    "exp_gained": 25,
+                    "completed_at": "2025-07-05 14:30:00"
+                },
+                ...
+            ]
         }
     """
-    page = request.args.get("page", 1, type=int)
-    limit = request.args.get("limit", 20, type=int)
-    offset = (page - 1) * limit
+    user_id = _get_current_user_id()
+    if not user_id:
+        return jsonify({'status': 'error', 'message': '请先登录'}), 401
 
-    db = get_db()
+    limit = request.args.get('limit', 20, type=int)
+    offset = request.args.get('offset', 0, type=int)
 
-    total = db.execute(
-        "SELECT COUNT(*) as cnt FROM pomodoro_sessions WHERE user_id = ?",
-        (g.user_id,)
-    ).fetchone()["cnt"]
+    # 参数安全限制
+    limit = min(max(1, limit), 100)
+    offset = max(0, offset)
 
-    sessions = db.execute(
-        """SELECT id, duration_min, exp_gained, completed_at
-           FROM pomodoro_sessions
-           WHERE user_id = ?
-           ORDER BY completed_at DESC
-           LIMIT ? OFFSET ?""",
-        (g.user_id, limit, offset)
-    ).fetchall()
+    conn = get_db()
+    cursor = conn.cursor()
 
-    db.close()
+    try:
+        total = cursor.execute(
+            "SELECT COUNT(*) as cnt FROM pomodoro_sessions WHERE user_id = ?",
+            (user_id,)
+        ).fetchone()['cnt']
 
-    return jsonify({
-        "total": total,
-        "page": page,
-        "limit": limit,
-        "sessions": [dict(s) for s in sessions]
-    })
+        rows = cursor.execute(
+            "SELECT id, duration_min, exp_gained, completed_at "
+            "FROM pomodoro_sessions WHERE user_id = ? "
+            "ORDER BY completed_at DESC LIMIT ? OFFSET ?",
+            (user_id, limit, offset)
+        ).fetchall()
+
+        sessions = [dict(row) for row in rows]
+
+        return jsonify({
+            'status': 'ok',
+            'total': total,
+            'limit': limit,
+            'offset': offset,
+            'sessions': sessions,
+        })
+
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        conn.close()
 
 
-@pomodoro_bp.route("/pomodoro/stats", methods=["GET"])
-@login_required
-def get_pomodoro_stats():
+# ============================================================
+# GET /api/user/achievements — 获取用户已解锁成就
+# ============================================================
+
+@pomodoro_bp.route('/api/user/achievements', methods=['GET'])
+def user_achievements():
     """
-    获取番茄钟统计数据
+    获取当前用户的所有已解锁成就 + 全部成就列表（含未解锁状态）。
 
-    返回：
+    响应:
         {
-            "total_sessions": 42,
-            "total_minutes": 1050,
-            "today_sessions": 3,
-            "today_minutes": 75,
-            "streak_days": 5,
-            "weekly_sessions": [{"date":"...","count":3}, ...]
+            "status": "ok",
+            "unlocked_count": 3,
+            "total_count": 13,
+            "achievements": [
+                {
+                    "badge_id": "first_pomodoro",
+                    "name": "初次专注",
+                    "description": "完成第1次番茄钟",
+                    "icon": "🍅",
+                    "unlocked": true,
+                    "unlocked_at": "2025-07-05 14:30:00"
+                },
+                {
+                    "badge_id": "pomodoro_5",
+                    "name": "专注新手",
+                    "description": "累计完成5次番茄钟",
+                    "icon": "⭐",
+                    "unlocked": false,
+                    "unlocked_at": null
+                },
+                ...
+            ]
         }
     """
-    db = get_db()
-    today = datetime.now().strftime("%Y-%m-%d")
+    user_id = _get_current_user_id()
+    if not user_id:
+        return jsonify({'status': 'error', 'message': '请先登录'}), 401
 
-    # 总计
-    total_sessions = db.execute(
-        "SELECT COUNT(*) as cnt FROM pomodoro_sessions WHERE user_id = ?",
-        (g.user_id,)
-    ).fetchone()["cnt"]
+    conn = get_db()
 
-    total_minutes = db.execute(
-        "SELECT COALESCE(SUM(duration_min), 0) as total FROM pomodoro_sessions WHERE user_id = ?",
-        (g.user_id,)
-    ).fetchone()["total"]
+    try:
+        unlocked = get_user_achievements(user_id, conn)
+        unlocked_ids = {a['badge_id'] for a in unlocked}
+        unlocked_map = {a['badge_id']: a['unlocked_at'] for a in unlocked}
 
-    # 今日
-    today_sessions = db.execute(
-        "SELECT COUNT(*) as cnt FROM pomodoro_sessions WHERE user_id = ? AND date(completed_at) = ?",
-        (g.user_id, today)
-    ).fetchone()["cnt"]
+        # 构建完整成就列表（含未解锁的）
+        all_achievements = []
+        for badge_id, definition in ACHIEVEMENT_DEFINITIONS.items():
+            all_achievements.append({
+                'badge_id': badge_id,
+                'name': definition['name'],
+                'description': definition['description'],
+                'icon': definition['icon'],
+                'unlocked': badge_id in unlocked_ids,
+                'unlocked_at': unlocked_map.get(badge_id, None),
+            })
 
-    today_minutes = db.execute(
-        "SELECT COALESCE(SUM(duration_min), 0) as total FROM pomodoro_sessions WHERE user_id = ? AND date(completed_at) = ?",
-        (g.user_id, today)
-    ).fetchone()["total"]
+        return jsonify({
+            'status': 'ok',
+            'unlocked_count': len(unlocked),
+            'total_count': len(ACHIEVEMENT_DEFINITIONS),
+            'achievements': all_achievements,
+        })
 
-    # 连续打卡天数
-    streak = _calculate_streak(g.user_id, db)
-
-    # 最近 7 天每日统计
-    weekly = []
-    for i in range(6, -1, -1):
-        day = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
-        count = db.execute(
-            "SELECT COUNT(*) as cnt FROM pomodoro_sessions WHERE user_id = ? AND date(completed_at) = ?",
-            (g.user_id, day)
-        ).fetchone()["cnt"]
-        weekly.append({"date": day, "count": count})
-
-    db.close()
-
-    return jsonify({
-        "total_sessions": total_sessions,
-        "total_minutes": total_minutes,
-        "today_sessions": today_sessions,
-        "today_minutes": today_minutes,
-        "streak_days": streak,
-        "weekly_sessions": weekly
-    })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        conn.close()

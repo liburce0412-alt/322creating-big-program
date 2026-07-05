@@ -1,86 +1,54 @@
-# Makefile —— campus_lib C 数据结构模块
-# 编译生成独立的可执行文件，Python 通过 subprocess 调用
+# Makefile — C 模块编译
+# 将所有数据结构的 .c 编译并链接为单一可执行文件 campus_lib
+#
+# 使用:
+#   make              — 编译所有模块
+#   make clean        — 清理编译产物
+#   make test-queue   — 测试队列模块
 
 CC       = gcc
 CFLAGS   = -Wall -Wextra -O2 -std=c99
-LDFLAGS  = -lm
+LDFLAGS  =
 
-# 所有 .c 源文件（两组各自添加）
-SOURCES  = main.c           \
-           linked_list.c    \
-           queue.c          \
-           binary_search.c  \
-           stack.c          \
-           kmp.c            \
-           hash_table.c
+# 当前可编译的源文件（queue 模块已完成，其余模块后续补充）
+SOURCES  = queue.c \
+           main.c
+#          linked_list.c \
+#          binary_search.c \
+#          stack.c \
+#          kmp.c \
+#          hash_table.c \
 
 OBJECTS  = $(SOURCES:.c=.o)
 TARGET   = campus_lib
 
 # 默认目标
-.PHONY: all clean test
-
 all: $(TARGET)
 
+# 链接
 $(TARGET): $(OBJECTS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
-	@echo "✅ Build success: ./$(TARGET)"
+	$(CC) $(LDFLAGS) -o $@ $^
+	@echo "[OK] 编译完成: $(TARGET)"
 
+# 编译规则
 %.o: %.c %.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-# main.c 依赖所有模块头文件
-main.o: main.c linked_list.h queue.h binary_search.h stack.h kmp.h hash_table.h
+# main.c 没有对应的 .h 文件
+main.o: main.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-# 如果某个组的 .c 还没写，创建空桩以便编译通过
-hash_table.o: hash_table.c hash_table.h
-	$(CC) $(CFLAGS) -c -o $@ $< 2>/dev/null || true
-
-# 仅编译核心模块（陈+丁超轶负责的模块 + main.c）
-partial: main.c linked_list.c linked_list.h queue.c queue.h \
-         stack.c stack.h kmp.c kmp.h binary_search.c binary_search.h
-	$(CC) $(CFLAGS) -o $(TARGET) main.c linked_list.c queue.c stack.c kmp.c binary_search.c $(LDFLAGS)
-	@echo "✅ Partial build (core modules): ./$(TARGET)"
-
-# 测试
-test: $(TARGET)
-	@echo "=== 测试 linked_list ==="
-	@echo '{"module":"linked_list","action":"append","data":{"role":"user","content":"你好"}}' | ./$(TARGET)
-	@echo ""
-	@echo '{"module":"linked_list","action":"append","data":{"role":"assistant","content":"你好！有什么可以帮助你的？"}}' | ./$(TARGET)
-	@echo ""
-	@echo '{"module":"linked_list","action":"to_array"}' | ./$(TARGET)
-	@echo ""
-	@echo "=== 测试 queue ==="
-	@echo '{"module":"queue","action":"enqueue","data":{"request_id":"r1","model":"deepseek","prompt_hash":"abc","priority":0}}' | ./$(TARGET)
-	@echo ""
-	@echo '{"module":"queue","action":"size"}' | ./$(TARGET)
-	@echo ""
-	@echo '{"module":"queue","action":"dequeue"}' | ./$(TARGET)
-	@echo ""
-	@echo "=== 测试 stack (undo/redo) ==="
-	@echo '{"module":"stack","action":"push","data":{"category":"学习","description":"复习高数","duration_min":90}}' | ./$(TARGET)
-	@echo ""
-	@echo '{"module":"stack","action":"push","data":{"category":"运动","description":"跑步5公里","duration_min":30}}' | ./$(TARGET)
-	@echo ""
-	@echo '{"module":"stack","action":"undo_size"}' | ./$(TARGET)
-	@echo ""
-	@echo '{"module":"stack","action":"pop"}' | ./$(TARGET)
-	@echo ""
-	@echo '{"module":"stack","action":"redo_pop"}' | ./$(TARGET)
-	@echo ""
-	@echo "=== 测试 kmp (关键词搜索) ==="
-	@echo '{"module":"kmp","action":"match_single","data":{"text":"复习高等数学第三章","pattern":"高等数学"}}' | ./$(TARGET)
-	@echo ""
-	@echo '{"module":"kmp","action":"search","data":{"keyword":"高数","records":[{"id":1,"category":"学习","description":"复习高数"},{"id":2,"category":"运动","description":"跑步"},{"id":3,"category":"学习","description":"高数作业"}]}}' | ./$(TARGET)
-	@echo ""
-	@echo "=== 测试 binary_search ==="
-	@echo '{"module":"binary_search","action":"search_by_time","data":{"target":1700000000,"records":[{"id":1,"timestamp":1600000000},{"id":2,"timestamp":1700000000},{"id":3,"timestamp":1800000000}]}}' | ./$(TARGET)
-	@echo ""
-	@echo '{"module":"binary_search","action":"range_search","data":{"start":1600000000,"end":1750000000,"records":[{"id":1,"timestamp":1600000000},{"id":2,"timestamp":1700000000},{"id":3,"timestamp":1800000000}]}}' | ./$(TARGET)
-	@echo ""
-
+# 清理
 clean:
-	rm -f $(OBJECTS) $(TARGET)
-	@echo "🧹 Cleaned"
+	rm -f $(OBJECTS) $(TARGET) queue_data.json
+	@echo "[OK] 清理完成"
+
+# 单独测试队列模块（编译为独立测试程序）
+test-queue: queue.c queue.h
+	$(CC) $(CFLAGS) -DQUEUE_STANDALONE_TEST -o test_queue queue.c
+	@echo "[OK] 队列测试程序编译完成: ./test_queue"
+	@echo "  测试入队: echo '{\"command\":\"enqueue\",\"data\":\"hello\"}' | ./test_queue"
+	@echo "  测试出队: echo '{\"command\":\"dequeue\"}' | ./test_queue"
+	@echo "  测试大小: echo '{\"command\":\"size\"}' | ./test_queue"
+
+.PHONY: all clean test-queue

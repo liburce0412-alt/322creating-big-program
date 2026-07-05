@@ -2,33 +2,13 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>注册 - 校园达人 CampusAI</title>
     <link rel="stylesheet" href="css/style.css">
-    <style>
-        .auth-container {
-            max-width: 420px;
-            margin: 60px auto;
-        }
-        .auth-card {
-            background: var(--bg-card);
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow-lg);
-            padding: 40px;
-            text-align: center;
-        }
-        .auth-card .logo { font-size: 3rem; margin-bottom: 8px; }
-        .auth-card h1 { font-size: 1.5rem; margin-bottom: 4px; }
-        .auth-card .subtitle { color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 24px; }
-        .auth-card .form-group { text-align: left; }
-        .auth-card .btn { width: 100%; margin-top: 8px; }
-        .auth-switch { margin-top: 16px; font-size: 0.9rem; color: var(--text-secondary); }
-        .error-msg { color: var(--danger); font-size: 0.85rem; margin-top: 8px; display: none; }
-    </style>
 </head>
 <body>
 
-<div class="auth-container">
+<div class="auth-page">
     <div class="auth-card">
         <div class="logo">🎓</div>
         <h1>创建账号</h1>
@@ -66,7 +46,7 @@
 <script src="js/utils.js"></script>
 <script>
 if (auth.isLoggedIn()) {
-    window.location.href = '/dashboard.html';
+    window.location.href = 'dashboard.html';
 }
 
 async function handleRegister(e) {
@@ -99,7 +79,7 @@ async function handleRegister(e) {
         await auth.register(username, password);
         utils.toast('注册成功！欢迎加入校园达人 🎉', 'success');
         setTimeout(() => {
-            window.location.href = '/dashboard.html';
+            window.location.href = 'dashboard.html';
         }, 500);
     } catch (err) {
         showError(err.message || '注册失败，请重试');
