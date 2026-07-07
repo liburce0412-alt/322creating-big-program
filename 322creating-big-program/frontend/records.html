@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>时间记录 - 校园达人 CampusAI</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+.records-table th, .records-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+.records-table th { font-weight: 600; color: var(--text-secondary); font-size: 0.85rem; }
+.records-table tr:hover { background: var(--bg); }
+.filter-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.filter-tab { padding: 4px 14px; border-radius: 16px; font-size: 0.85rem; cursor: pointer; border: 1px solid var(--border); background: var(--bg-card); }
+.filter-tab.active { background: var(--primary); color: white; border-color: var(--primary); }
+.empty-state { text-align: center; padding: 48px 20px; color: var(--text-light); }
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+.modal-overlay.show { display: flex; }
+.modal { background: var(--bg-card); border-radius: var(--radius); padding: 24px; width: 90%; max-width: 460px; box-shadow: var(--shadow-lg); }
+    </style>
+</head>
+<body>
+<body>
+<nav id="navbar">
+    <a href="/" class="navbar-brand">
+        <span class="logo-icon">🎓</span> 校园达人
+    </a>
+    <ul class="navbar-nav">
+        <li><a href="/dashboard.html" class="nav-link">🏠 首页</a></li>
+        <li><a href="/pomodoro.html" class="nav-link">🍅 番茄钟</a></li>
+        <li><a href="/records.html" class="nav-link active">📝 时间记录</a></li>
+        <li><a href="/stats.html" class="nav-link">📊 统计</a></li>
+        <li><a href="/ai-report.html" class="nav-link">🤖 AI 分析</a></li>
+        <li><a href="/achievements.html" class="nav-link">🏆 成就</a></li>
+    </ul>
+    <div class="navbar-user">
+        <span class="username" id="nav-username">用户</span>
+        <span class="level-badge" id="nav-level">Lv.1</span>
+        <button class="btn-logout" id="btn-logout-nav">退出</button>
+    </div>
+</nav>
+
+<div class="page-container">
+    <div class="page-header">
+        <h1>📋 时间记录</h1>
+        <p>记录和管理你的学习时间</p>
+    </div>
+
+    <div class="card">
+        <div class="card-header">搜索 & 操作</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding: 8px 0;">
+            <div style="display: flex; gap: 8px; flex: 1; max-width: 360px;">
+                <input type="text" id="search-input" class="form-input" placeholder="搜索关键词..." style="flex:1;">
+                <button id="btn-search" class="btn btn-primary btn-sm">搜索</button>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button id="btn-undo" class="btn btn-outline btn-sm">↩ 撤销</button>
+                <button id="btn-redo" class="btn btn-outline btn-sm">↪ 重做</button>
+                <button id="btn-add" class="btn btn-accent btn-sm">+ 添加记录</button>
+                <button id="btn-refresh" class="btn btn-outline btn-sm">🔄</button>
+            </div>
+        </div>
+    </div>
+
+    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px;" id="filter-tabs">
+        <span class="filter-tab active" data-cat="" style="padding:4px 14px; border-radius:16px; font-size:0.85rem; cursor:pointer; border:1px solid var(--border); background:var(--primary); color:white;">全部</span>
+        <span class="filter-tab" data-cat="学习" style="padding:4px 14px; border-radius:16px; font-size:0.85rem; cursor:pointer; border:1px solid var(--border); background:var(--bg-card);">学习</span>
+        <span class="filter-tab" data-cat="读书" style="padding:4px 14px; border-radius:16px; font-size:0.85rem; cursor:pointer; border:1px solid var(--border); background:var(--bg-card);">读书</span>
+        <span class="filter-tab" data-cat="运动" style="padding:4px 14px; border-radius:16px; font-size:0.85rem; cursor:pointer; border:1px solid var(--border); background:var(--bg-card);">运动</span>
+        <span class="filter-tab" data-cat="编程" style="padding:4px 14px; border-radius:16px; font-size:0.85rem; cursor:pointer; border:1px solid var(--border); background:var(--bg-card);">编程</span>
+        <span class="filter-tab" data-cat="娱乐" style="padding:4px 14px; border-radius:16px; font-size:0.85rem; cursor:pointer; border:1px solid var(--border); background:var(--bg-card);">娱乐</span>
+        <span class="filter-tab" data-cat="社交" style="padding:4px 14px; border-radius:16px; font-size:0.85rem; cursor:pointer; border:1px solid var(--border); background:var(--bg-card);">社交</span>
+        <span class="filter-tab" data-cat="工作" style="padding:4px 14px; border-radius:16px; font-size:0.85rem; cursor:pointer; border:1px solid var(--border); background:var(--bg-card);">工作</span>
+        <span class="filter-tab" data-cat="其他" style="padding:4px 14px; border-radius:16px; font-size:0.85rem; cursor:pointer; border:1px solid var(--border); background:var(--bg-card);">其他</span>
+    </div>
+
+    <div class="card">
+        <div id="records-container">
+            <div class="empty-state" id="empty-state" style="display:block; text-align:center; padding:48px 20px; color:var(--text-light);">
+                <div style="font-size:48px; margin-bottom:12px;">📝</div>
+                <h3>还没有时间记录</h3>
+                <p>点击上方"添加记录"开始吧！</p>
+            </div>
+            <div id="records-list" style="display:none;">
+                <div class="table-wrapper" style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+                <table class="records-table" style="width:100%; border-collapse:collapse;">
+                    <thead><tr>
+                        <th style="text-align:left; padding:10px 12px; border-bottom:1px solid var(--border);">类别</th>
+                        <th style="text-align:left; padding:10px 12px; border-bottom:1px solid var(--border);">描述</th>
+                        <th style="text-align:left; padding:10px 12px; border-bottom:1px solid var(--border);">时长</th>
+                        <th style="text-align:left; padding:10px 12px; border-bottom:1px solid var(--border);">时间</th>
+                        <th style="text-align:left; padding:10px 12px; border-bottom:1px solid var(--border);">操作</th>
+                    </tr></thead>
+                    <tbody id="records-body"></tbody>
+                </table>
+                </div>
+                <div style="display:flex; justify-content:center; gap:8px; margin-top:16px;" id="pagination"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 添加/编辑弹窗 -->
+<div class="modal-overlay" id="modal-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; justify-content:center; align-items:center;">
+    <div class="modal" style="background:var(--bg-card); border-radius:var(--radius); padding:24px; width:90%; max-width:460px; box-shadow:var(--shadow-lg);">
+        <h2 id="modal-title">添加时间记录</h2>
+        <div style="margin:14px 0;">
+            <label class="form-label">类别 *</label>
+            <select id="input-category" class="form-input">
+                <option value="">选择...</option>
+                <option>学习</option><option>读书</option><option>运动</option>
+                <option>编程</option><option>娱乐</option><option>社交</option>
+                <option>工作</option><option>其他</option>
+            </select>
+        </div>
+        <div style="margin:14px 0;">
+            <label class="form-label">描述</label>
+            <input type="text" id="input-description" class="form-input" placeholder="做了什么...">
+        </div>
+        <div style="margin:14px 0;">
+            <label class="form-label">时长（分钟）*</label>
+            <input type="number" id="input-duration" class="form-input" min="1" placeholder="例如: 60">
+        </div>
+        <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:20px;">
+            <button id="btn-cancel" class="btn btn-outline">取消</button>
+            <button id="btn-save" class="btn btn-primary">保存</button>
+        </div>
+        <input type="hidden" id="edit-id" value="">
+    </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/auth.js?v=2"></script>
+<script src="js/utils.js?v=2"></script>
+<script>
+// ==================== 时间记录页面逻辑 ====================
+let currentPage = 1, currentFilter = "", records = [], selectedRecordId = null;
+
+async function initRecords() {
+    if (!auth.requireLogin()) return;
+    await auth.renderNavbar();
+    await loadRecords();
+    attachEvents();
+}
+
+async function loadRecords(page) {
+    if (page) currentPage = page;
+    try {
+        var p = { page: currentPage, limit: 20 };
+        if (currentFilter) p.category = currentFilter;
+        var data = await api.getTimeRecords(p);
+        records = data.records || [];
+        render();
+    } catch (e) { console.error(e); records = []; render(); }
+}
+
+function render() {
+    var empty = document.getElementById("empty-state");
+    var list = document.getElementById("records-list");
+    if (!records.length) { empty.style.display = "block"; list.style.display = "none"; return; }
+    empty.style.display = "none"; list.style.display = "block";
+    var cols = {"学习":"#4A90D9","读书":"#5CB85C","运动":"#F5A623","编程":"#7B68EE","娱乐":"#D9534F","社交":"#5BC0DE","工作":"#F0AD4E","其他":"#999"};
+    var html = "";
+    for (var i = 0; i < records.length; i++) {
+        var r = records[i], c = cols[r.category] || "#999";
+        var selStyle = selectedRecordId === r.id ? ' style="background:var(--primary-light);outline:2px solid var(--primary);outline-offset:-2px;border-radius:8px;"' : '';
+        html += '<tr' + selStyle + ' data-id="' + r.id + '" onclick="selectRecord(' + r.id + ', this)"><td><span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:0.8rem;font-weight:500;background:' + c + '20;color:' + c + '">' + r.category + '</span></td>'
+        html += "<td>"+(r.description||"-")+"</td>";
+        html += "<td><strong>"+r.duration_min+"</strong> 分钟</td>";
+        html += '<td style="font-size:0.85rem;color:var(--text-secondary);">' + utils.timeAgo(r.created_at) + '</td>'
+        html += '<td style="text-align:center;font-size:0.85rem;">' + (selectedRecordId === r.id ? '✔ 已选中' : '← 选择') + '</td>';
+    }
+    document.getElementById("records-body").innerHTML = html;
+    var pages = Math.ceil((records.length||1)/20);
+    var phtml = "";
+    for (var j = 1; j <= Math.max(pages,1); j++) phtml += '<button style="min-width:36px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:' + (j===currentPage?"var(--primary)":"var(--bg-card)") + ';color:' + (j===currentPage?"white":"var(--text)") + ';cursor:pointer;" onclick="loadRecords(' + j + ')">' + j + '</button>';
+    document.getElementById("pagination").innerHTML = phtml;
+}
+
+function attachEvents() {
+    document.getElementById("btn-add").onclick = function() {
+        document.getElementById("edit-id").value = "";
+        document.getElementById("modal-title").textContent = "添加时间记录";
+        document.getElementById("modal-overlay").style.display = "flex";
+    };
+    document.getElementById("btn-cancel").onclick = function() { document.getElementById("modal-overlay").style.display = "none"; };
+    document.getElementById("btn-save").onclick = saveRecord;
+    document.getElementById("btn-refresh").onclick = function() { loadRecords(); };
+    document.getElementById("btn-undo").onclick = function() {
+        if (!selectedRecordId) { utils.toast("请先选择一条记录", "error"); return; }
+        if (!confirm("确定删除该记录吗？")) return;
+        api.deleteTimeRecord(selectedRecordId).then(function() {
+            utils.toast("已删除", "success");
+            selectedRecordId = null;
+            loadRecords();
+        }).catch(function(e) { utils.toast(e.message||"删除失败", "error"); });
+    };
+    document.getElementById("btn-redo").onclick = function() {
+        if (!selectedRecordId) { utils.toast("请先选择一条记录", "error"); return; }
+        var rec = records.find(function(r) { return r.id === selectedRecordId; });
+        if (!rec) { utils.toast("记录不存在", "error"); return; }
+        document.getElementById("edit-id").value = rec.id;
+        document.getElementById("modal-title").textContent = "编辑时间记录";
+        document.getElementById("input-category").value = rec.category;
+        document.getElementById("input-description").value = rec.description || "";
+        document.getElementById("input-duration").value = rec.duration_min;
+        document.getElementById("modal-overlay").style.display = "flex";
+    };
+    document.getElementById("btn-search").onclick = function() { currentFilter=document.getElementById("search-input").value.trim(); currentPage=1; loadRecords(); };
+    document.getElementById("search-input").onkeypress = function(e) { if(e.key==="Enter")document.getElementById("btn-search").click(); };
+    document.getElementById("modal-overlay").onclick = function(e) { if(e.target===e.currentTarget) document.getElementById("modal-overlay").style.display="none"; };
+    var tabs = document.getElementById("filter-tabs").children;
+    for (var i=0; i<tabs.length; i++) {
+        tabs[i].onclick = function() {
+            currentFilter = this.getAttribute("data-cat");
+            for (var j=0; j<tabs.length; j++) { tabs[j].style.background = "var(--bg-card)"; tabs[j].style.color = ""; }
+            this.style.background = "var(--primary)"; this.style.color = "white";
+            currentPage = 1; loadRecords();
+        };
+    }
+}
+
+async function saveRecord() {
+    var cat = document.getElementById("input-category").value;
+    var desc = document.getElementById("input-description").value.trim();
+    var dur = parseInt(document.getElementById("input-duration").value);
+    if (!cat||!dur||dur<=0) { utils.toast("请填写完整信息","error"); return; }
+    var editId = document.getElementById("edit-id").value;
+    try {
+        if (editId) {
+            await api.request("PUT", "/time-records/" + editId, {category:cat,description:desc,duration_min:dur});
+            utils.toast("已更新","success");
+        } else {
+            await api.addTimeRecord({category:cat,description:desc,duration_min:dur});
+            utils.toast("已添加","success");
+        }
+        document.getElementById("modal-overlay").style.display="none";
+        document.getElementById("modal-title").textContent = "添加时间记录";
+
+        selectedRecordId = null;
+        loadRecords();
+    } catch(e) { utils.toast(e.message||"操作失败","error"); }
+}
+
+async function delRecord(id) {
+    if (!confirm("确定删除？")) return;
+    try { await api.deleteTimeRecord(id); utils.toast("已删除","success"); loadRecords(); }
+    catch(e) { utils.toast(e.message||"删除失败","error"); }
+}
+
+function selectRecord(id, row) {
+    document.querySelectorAll('#records-body tr').forEach(function(r) {
+        r.style.background = ''; r.style.outline = ''; r.style.borderRadius = '';
+    });
+    if (selectedRecordId === id) {
+        selectedRecordId = null;
+    } else {
+        selectedRecordId = id;
+        row.style.background = 'var(--primary-light)';
+        row.style.outline = '2px solid var(--primary)';
+        row.style.outlineOffset = '-2px';
+        row.style.borderRadius = '8px';
+    }
+}
+
+async function undoRecord() {
+    try { await api.undoRecord(); utils.toast("撤销成功","success"); loadRecords(); }
+    catch(e) { utils.toast("没有可撤销的记录","error"); }
+}
+
+async function redoRecord() {
+    try { await api.redoRecord(); utils.toast("重做成功","success"); loadRecords(); }
+    catch(e) { utils.toast("没有可重做的记录","error"); }
+}
+
+document.addEventListener("DOMContentLoaded", initRecords);
+</script>
+<script>
+(function() {
+    var u = localStorage.getItem("campus_user");
+    if (u) {
+        try {
+            var p = JSON.parse(u);
+            document.getElementById("nav-username").textContent = p.username || "用户";
+            document.getElementById("nav-level").textContent = "Lv." + (p.level || 1);
+        } catch(e) {}
+    }
+})();
+</script>
+
+</body>
+</html>

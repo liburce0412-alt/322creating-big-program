@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>首页 - 校园达人 CampusAI</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- 导航栏 -->
+<nav id="navbar"></nav>
+
+<!-- 主内容 -->
+<div class="page-container">
+    <div class="page-header">
+        <h1>👋 欢迎回来，<span id="username-display">同学</span>！</h1>
+        <p id="greeting-text">新的一天，从专注开始 ✨</p>
+    </div>
+
+    <!-- 统计卡片 -->
+    <div class="card-grid" id="stats-cards">
+        <div class="card stat-card">
+            <div class="stat-icon">🍅</div>
+            <div class="stat-value" id="stat-pomodoro">--</div>
+            <div class="stat-label">今日专注</div>
+        </div>
+        <div class="card stat-card">
+            <div class="stat-icon">📝</div>
+            <div class="stat-value" id="stat-records">--</div>
+            <div class="stat-label">时间记录</div>
+        </div>
+        <div class="card stat-card">
+            <div class="stat-icon">⭐</div>
+            <div class="stat-value" id="stat-level">Lv.1</div>
+            <div class="stat-label">当前等级</div>
+        </div>
+        <div class="card stat-card">
+            <div class="stat-icon">🔥</div>
+            <div class="stat-value" id="stat-streak">0</div>
+            <div class="stat-label">连续打卡天数</div>
+        </div>
+    </div>
+
+    <!-- 等级进度 + 快捷操作（响应式双列） -->
+    <div class="card-grid-2">
+        <!-- 等级进度 -->
+        <div class="card">
+            <div class="card-header">📈 等级进度</div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: var(--fs-sm);">
+                <span>Lv.<span id="level-current">1</span></span>
+                <span id="exp-text">0 / 200</span>
+                <span>Lv.<span id="level-next">2</span></span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill accent" id="exp-bar" style="width: 0%;"></div>
+            </div>
+            <p class="text-muted mt-2" style="font-size: 0.85rem;">💡 完成番茄钟获得 50 经验值</p>
+        </div>
+
+        <!-- 快捷操作 -->
+        <div class="card">
+            <div class="card-header">⚡ 快捷操作</div>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <a href="pomodoro.html" class="btn btn-primary btn-lg">
+                    🍅 开始番茄钟
+                </a>
+                <a href="records.html" class="btn btn-outline btn-lg">
+                    📝 添加时间记录
+                </a>
+                <a href="ai-report.html" class="btn btn-accent btn-lg">
+                    🤖 生成 AI 分析报告
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- 今日时间分配 + 本周趋势（响应式双列） -->
+    <div class="card-grid-2" style="margin-top: 16px;">
+        <div class="card">
+            <div class="card-header">📊 今日时间分配</div>
+            <div style="position: relative; width: 100%; max-width: 340px; margin: 0 auto;">
+                <canvas id="pie-chart" style="width: 100%; height: auto; aspect-ratio: 1; display: block;"></canvas>
+            </div>
+            <p class="text-muted text-center mt-2" id="pie-empty" style="display:none;">今天还没有记录，去添加一条吧！</p>
+        </div>
+        <div class="card">
+            <div class="card-header">📅 本周番茄钟趋势</div>
+            <div style="position: relative; width: 100%; max-width: 500px; margin: 0 auto;">
+                <canvas id="bar-chart" style="width: 100%; height: auto; aspect-ratio: 4/3; display: block;"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- 最近成就 -->
+    <div class="card" style="margin-top: 16px;">
+        <div class="card-header">🏆 最近获得的成就</div>
+        <div id="recent-achievements" class="flex flex-wrap gap-2">
+            <p class="text-muted">加载中...</p>
+        </div>
+        <div class="text-center mt-2">
+            <a href="achievements.html" style="font-weight: 600;">查看全部成就 →</a>
+        </div>
+    </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/auth.js?v=2"></script>
+<script src="js/utils.js?v=2"></script>
+<script>
+// ==================== 页面逻辑 ====================
+
+async function initDashboard() {
+    if (!auth.requireLogin()) return;
+    await auth.renderNavbar();
+
+    try {
+        const profile = await api.getProfile();
+        renderProfile(profile);
+
+        const pomoStats = await api.getPomodoroStats();
+        renderPomoStats(pomoStats);
+
+        const timeStats = await api.getTimeStats();
+        renderTimeStats(timeStats);
+
+        const achievements = await api.getAchievements();
+        renderAchievements(achievements.achievements);
+
+    } catch (err) {
+        console.error('加载仪表盘失败:', err);
+        utils.toast('加载数据失败，请刷新重试', 'error');
+    }
+
+    // 根据时间显示问候语
+    const hour = new Date().getHours();
+    const greeting = hour < 6 ? '夜深了，注意休息 🌙' :
+                     hour < 12 ? '早上好！新的一天开始了 ☀️' :
+                     hour < 14 ? '中午好！别忘了吃午饭 🍱' :
+                     hour < 18 ? '下午好！继续加油 💪' :
+                     '晚上好！回顾一下今天吧 🌆';
+    document.getElementById('greeting-text').textContent = greeting;
+}
+
+function renderProfile(profile) {
+    document.getElementById('username-display').textContent = profile.username;
+    document.getElementById('stat-level').textContent = 'Lv.' + profile.level;
+    document.getElementById('stat-records').textContent = profile.total_records;
+    document.getElementById('level-current').textContent = profile.level;
+    document.getElementById('level-next').textContent = profile.level + 1;
+    document.getElementById('exp-text').textContent = profile.exp + ' / ' + profile.exp_needed;
+    document.getElementById('exp-bar').style.width = Math.min(profile.exp_percent, 100) + '%';
+}
+
+function renderPomoStats(stats) {
+    document.getElementById('stat-pomodoro').textContent = utils.formatMinutes(stats.today_minutes);
+    document.getElementById('stat-streak').textContent = stats.streak_days;
+
+    utils.drawBarChart('bar-chart', stats.weekly_sessions.map(function(s) {
+        return { label: s.date.slice(5), value: s.count };
+    }));
+}
+
+function renderTimeStats(stats) {
+    if (stats && stats.by_category && stats.by_category.length > 0) {
+        document.getElementById('pie-empty').style.display = 'none';
+        utils.drawPieChart('pie-chart', stats.by_category.map(function(c) {
+            return { label: c.category, value: c.total_min, color: utils.randomColor() };
+        }));
+    } else {
+        document.getElementById('pie-empty').style.display = 'block';
+    }
+}
+
+function renderAchievements(achievements) {
+    var container = document.getElementById('recent-achievements');
+    if (!achievements || achievements.length === 0) {
+        container.innerHTML = '<p class="text-muted">还没有获得成就，使用番茄钟来解锁吧！</p>';
+        return;
+    }
+    var recent = achievements.slice(0, 4);
+    container.innerHTML = recent.map(function(a) {
+        return '<div style="text-align: center; padding: 12px;">' +
+            '<span class="badge-icon" style="font-size:2.5rem;display:block;">' + a.icon + '</span>' +
+            '<div style="font-weight: 600; font-size: 0.9rem;">' + a.name + '</div>' +
+            '<div style="font-size: 0.75rem; color: #999;">' + utils.timeAgo(a.unlocked_at) + '</div>' +
+        '</div>';
+    }).join('');
+}
+
+document.addEventListener('DOMContentLoaded', initDashboard);
+</script>
+
+</body>
+</html>

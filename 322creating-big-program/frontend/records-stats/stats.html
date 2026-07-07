@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>校园达人 · 时间统计</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="stats.css">
+</head>
+<body>
+    <nav class="navbar">
+        <a href="dashboard.html" class="logo">📚 校园达人</a>
+        <div class="nav-links">
+            <a href="dashboard.html">首页</a>
+            <a href="records.html">时间记录</a>
+            <a href="stats.html" class="active">统计</a>
+            <a href="pomodoro.html">番茄钟</a>
+            <a href="ai-report.html">AI报告</a>
+            <a href="achievements.html">成就</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="card">
+            <h2>📊 分类占比</h2>
+            <canvas id="pieChart"></canvas>
+            <div id="pieEmpty" class="empty" style="display:none;">暂无数据</div>
+        </div>
+        <div class="card">
+            <h2>📈 每日趋势</h2>
+            <canvas id="barChart"></canvas>
+            <div id="barEmpty" class="empty" style="display:none;">暂无数据</div>
+        </div>
+    </div>
+
+    <script src="utils.js"></script>
+    <script src="stats.js"></script>
+</body>
+</html>
